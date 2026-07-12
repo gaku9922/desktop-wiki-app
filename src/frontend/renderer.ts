@@ -121,7 +121,7 @@ function renderSidebar(): void {
     return;
   }
   treeEl.appendChild(buildTreeList(wikiTree, 0));
-  highlightActiveArticle();
+  updateSidebarActive();
 }
 
 function buildTreeList(nodes: WikiTreeNode[], depth: number): HTMLUListElement {
@@ -150,7 +150,12 @@ function buildTreeList(nodes: WikiTreeNode[], depth: number): HTMLUListElement {
         const closed = li.classList.toggle('tree__item--closed');
         toggle.textContent = closed ? '▸' : '▾';
       };
-      row.addEventListener('click', toggleOpen);
+      // シェブロン = 開閉、ラベル（行本体）= ディレクトリページへ遷移
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleOpen();
+      });
+      row.addEventListener('click', () => navigate(categoryHash(node.path)));
 
       li.dataset.categoryPath = node.path.join('/');
       li.append(row, children);
@@ -177,30 +182,45 @@ function countArticles(node: WikiTreeNode): number {
   return node.children.reduce((n, c) => n + countArticles(c), 0);
 }
 
-//  現在の記事の祖先カテゴリを開き、該当行をハイライトする
-function highlightActiveArticle(): void {
-  const id = currentArticleId();
-  treeEl
-    .querySelectorAll('.tree__row--article.is-active')
-    .forEach((r) => r.classList.remove('is-active'));
-  if (!id) return;
-  const summary = summaryById.get(id);
-  if (summary) {
-    // 祖先カテゴリを展開
-    for (let i = 1; i <= summary.categoryPath.length; i++) {
-      const key = summary.categoryPath.slice(0, i).join('/');
-      const li = treeEl.querySelector<HTMLElement>(`li[data-category-path="${cssEscape(key)}"]`);
-      if (li) {
-        li.classList.remove('tree__item--closed');
-        const t = li.querySelector('.tree__toggle');
-        if (t) t.textContent = '▾';
-      }
+//  指定したカテゴリパス（およびその祖先）を展開する
+function expandPath(path: string[]): void {
+  for (let i = 1; i <= path.length; i++) {
+    const key = path.slice(0, i).join('/');
+    const li = treeEl.querySelector<HTMLElement>(`li[data-category-path="${cssEscape(key)}"]`);
+    if (li) {
+      li.classList.remove('tree__item--closed');
+      const t = li.querySelector<HTMLElement>(':scope > .tree__row--category > .tree__toggle');
+      if (t) t.textContent = '▾';
     }
   }
-  const row = treeEl.querySelector<HTMLElement>(`.tree__row--article[data-article-id="${cssEscape(id)}"]`);
-  if (row) {
-    row.classList.add('is-active');
-    row.scrollIntoView({ block: 'nearest' });
+}
+
+//  現在のルートに応じてサイドバーの祖先を展開し、該当行をハイライトする
+function updateSidebarActive(): void {
+  treeEl.querySelectorAll('.is-active').forEach((r) => r.classList.remove('is-active'));
+  const route = parseRoute();
+
+  if (route.type === 'article') {
+    const summary = summaryById.get(route.id);
+    if (summary) expandPath(summary.categoryPath);
+    const row = treeEl.querySelector<HTMLElement>(
+      `.tree__row--article[data-article-id="${cssEscape(route.id)}"]`,
+    );
+    if (row) {
+      row.classList.add('is-active');
+      row.scrollIntoView({ block: 'nearest' });
+    }
+  } else if (route.type === 'category') {
+    // 祖先のみ展開（自身の開閉はシェブロン操作に委ねる）
+    expandPath(route.path.slice(0, -1));
+    const li = treeEl.querySelector<HTMLElement>(
+      `li[data-category-path="${cssEscape(route.path.join('/'))}"]`,
+    );
+    const row = li?.querySelector<HTMLElement>(':scope > .tree__row--category');
+    if (row) {
+      row.classList.add('is-active');
+      row.scrollIntoView({ block: 'nearest' });
+    }
   }
 }
 
@@ -211,16 +231,35 @@ function cssEscape(s: string): string {
 // ------------------------------------------------------------------ //
 //  ルーター
 // ------------------------------------------------------------------ //
+type Route =
+  | { type: 'top' }
+  | { type: 'article'; id: string }
+  | { type: 'category'; path: string[] };
+
+function parseRoute(): Route {
+  const h = location.hash;
+  const ma = /^#\/article\/(.+)$/.exec(h);
+  if (ma) return { type: 'article', id: decodeURIComponent(ma[1]) };
+  const mc = /^#\/category\/(.+)$/.exec(h);
+  if (mc) return { type: 'category', path: mc[1].split('/').map(decodeURIComponent) };
+  return { type: 'top' };
+}
+
 function currentArticleId(): string | null {
-  const m = /^#\/article\/(.+)$/.exec(location.hash);
-  return m ? decodeURIComponent(m[1]) : null;
+  const r = parseRoute();
+  return r.type === 'article' ? r.id : null;
+}
+
+function categoryHash(path: string[]): string {
+  return '#/category/' + path.map(encodeURIComponent).join('/');
 }
 
 function render(): void {
-  const id = currentArticleId();
-  if (id) renderArticle(id);
+  const route = parseRoute();
+  if (route.type === 'article') renderArticle(route.id);
+  else if (route.type === 'category') renderCategory(route.path);
   else renderTop();
-  highlightActiveArticle();
+  updateSidebarActive();
 }
 
 // ------------------------------------------------------------------ //
@@ -274,6 +313,129 @@ function latestRow(s: ArticleSummary): HTMLLIElement {
 }
 
 // ------------------------------------------------------------------ //
+//  パンくずリスト（トップ + 各カテゴリへのリンク）
+// ------------------------------------------------------------------ //
+function breadcrumb(path: string[], opts: { lastIsLink: boolean }): HTMLElement {
+  const nav = el('nav', { class: 'breadcrumb' });
+
+  const root = el('a', { class: 'breadcrumb__link', text: 'トップ', attrs: { href: '#/' } });
+  root.addEventListener('click', (e) => {
+    e.preventDefault();
+    navigate('#/');
+  });
+  nav.append(root);
+
+  path.forEach((seg, i) => {
+    nav.append(el('span', { class: 'breadcrumb__sep', text: '/' }));
+    const isLast = i === path.length - 1;
+    if (isLast && !opts.lastIsLink) {
+      nav.append(el('span', { class: 'breadcrumb__current', text: seg }));
+    } else {
+      const prefix = path.slice(0, i + 1);
+      const link = el('a', {
+        class: 'breadcrumb__link',
+        text: seg,
+        attrs: { href: categoryHash(prefix) },
+      });
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigate(categoryHash(prefix));
+      });
+      nav.append(link);
+    }
+  });
+  return nav;
+}
+
+// ------------------------------------------------------------------ //
+//  ディレクトリ（カテゴリ）閲覧ページ
+// ------------------------------------------------------------------ //
+function findCategory(path: string[]): WikiCategoryNode | null {
+  let nodes: WikiTreeNode[] = wikiTree;
+  let found: WikiCategoryNode | null = null;
+  for (const seg of path) {
+    const next = nodes.find(
+      (n): n is WikiCategoryNode => n.type === 'category' && n.name === seg,
+    );
+    if (!next) return null;
+    found = next;
+    nodes = next.children;
+  }
+  return found;
+}
+
+function renderCategory(path: string[]): void {
+  viewEl.innerHTML = '';
+  const node = findCategory(path);
+  const page = el('div', { class: 'page page--category' });
+  page.appendChild(breadcrumb(path, { lastIsLink: false }));
+
+  if (!node) {
+    page.appendChild(el('h1', { class: 'article__title', text: 'ディレクトリが見つかりません' }));
+    page.appendChild(el('p', { class: 'placeholder', text: `「${path.join('/')}」は存在しません。` }));
+    viewEl.appendChild(page);
+    return;
+  }
+
+  page.appendChild(el('h1', { class: 'cat__title', text: node.name }));
+
+  const childCategories = node.children.filter(
+    (n): n is WikiCategoryNode => n.type === 'category',
+  );
+  const targetKey = path.join('/');
+  const childArticles = articleIndex
+    .filter((s) => s.categoryPath.join('/') === targetKey)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  // ---- 上: 子ディレクトリ（レスポンシブなカードグリッド）----
+  const topSec = el('section', { class: 'cat-section' });
+  topSec.append(
+    el('div', { class: 'section-head' }, [
+      el('h2', { class: 'section-title', text: '子ディレクトリ' }),
+      el('span', { class: 'section-sub', text: `${childCategories.length} 件` }),
+    ]),
+  );
+  if (childCategories.length === 0) {
+    topSec.append(el('p', { class: 'placeholder', text: '子ディレクトリはありません' }));
+  } else {
+    const grid = el('div', { class: 'dir-grid' });
+    for (const c of childCategories) grid.append(dirCard(c));
+    topSec.append(grid);
+  }
+  page.append(topSec);
+
+  // ---- 下: 子記事（トップの最新更新記事と同じ表示）----
+  const botSec = el('section', { class: 'cat-section' });
+  botSec.append(
+    el('div', { class: 'section-head' }, [
+      el('h2', { class: 'section-title', text: '記事' }),
+      el('span', { class: 'section-sub', text: `${childArticles.length} 件` }),
+    ]),
+  );
+  if (childArticles.length === 0) {
+    botSec.append(el('p', { class: 'placeholder', text: '記事はありません' }));
+  } else {
+    const list = el('ul', { class: 'latest-list' });
+    for (const s of childArticles) list.append(latestRow(s));
+    botSec.append(list);
+  }
+  page.append(botSec);
+
+  viewEl.appendChild(page);
+}
+
+function dirCard(c: WikiCategoryNode): HTMLElement {
+  const card = el('button', { class: 'dir-card' });
+  card.append(
+    el('span', { class: 'dir-card__icon', text: '📁' }),
+    el('span', { class: 'dir-card__name', text: c.name }),
+    el('span', { class: 'dir-card__count', text: `${countArticles(c)} 記事` }),
+  );
+  card.addEventListener('click', () => navigate(categoryHash(c.path)));
+  return card;
+}
+
+// ------------------------------------------------------------------ //
 //  記事閲覧ページ
 // ------------------------------------------------------------------ //
 async function renderArticle(id: string): Promise<void> {
@@ -299,12 +461,8 @@ async function renderArticle(id: string): Promise<void> {
   const a = detail.article;
   const page = el('div', { class: 'page page--article' });
 
-  // 戻る + パンくず
-  const nav = el('div', { class: 'article__nav' });
-  const back = el('button', { class: 'link-btn', text: '← トップ' });
-  back.addEventListener('click', () => navigate('#/'));
-  nav.append(back, el('span', { class: 'article__crumb', text: detail.categoryPath.join(' / ') || 'ルート' }));
-  page.appendChild(nav);
+  // パンくず（各カテゴリはディレクトリページへのリンク）
+  page.appendChild(breadcrumb(detail.categoryPath, { lastIsLink: true }));
 
   page.appendChild(el('h1', { class: 'article__title', text: a.title }));
 
