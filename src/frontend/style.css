@@ -176,6 +176,7 @@ button { font-family: inherit; }
 .tree__row:hover { background: var(--surface-sunken); }
 
 .tree__toggle { width: 14px; color: var(--text-faint); font-size: 11px; flex-shrink: 0; }
+.tree__icon { flex-shrink: 0; font-size: 13px; line-height: 1; }
 .tree__label {
   overflow: hidden;
   text-overflow: ellipsis;
