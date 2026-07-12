@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Electron ファイル操作</title>
+  <title>社内Wiki</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
   <header class="app-header">
-    <span class="app-header__bar"></span>
-    <h1>JSON ファイルマネージャー</h1>
+    <button class="icon-btn" id="sidebarToggle" title="サイドバーの表示切替" aria-label="サイドバーの表示切替">☰</button>
+    <button class="app-header__title" id="homeLink" title="トップへ">社内Wiki</button>
     <span class="root-badge" id="rootBadge">読み込み中…</span>
     <button class="user-badge" id="userBadge" title="クリックで名前を変更" hidden>
       <span class="user-badge__icon">●</span>
@@ -17,79 +17,23 @@
     </button>
   </header>
 
-  <main class="layout">
+  <div class="layout" id="layout">
 
-    <!-- ===== 左ペイン: ファイルツリー ===== -->
-    <aside class="pane pane--tree">
-      <div class="pane__header">
-        <span class="pane__title">ファイルツリー</span>
+    <!-- ===== 左: サイドバー（Wikiツリー） ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__header">
+        <span class="sidebar__title">Wikiツリー</span>
         <button class="icon-btn" id="refreshBtn" title="更新">↺</button>
       </div>
-      <div class="tree" id="tree">
+      <div class="sidebar__tree" id="tree">
         <p class="placeholder">読み込み中…</p>
       </div>
     </aside>
 
-    <!-- ===== 中央ペイン: JSON エディタ ===== -->
-    <section class="pane pane--editor">
-      <div class="pane__header">
-        <span class="pane__title" id="editorTitle">ファイルを選択してください</span>
-        <div class="editor-actions">
-          <button class="btn btn--primary" id="saveBtn" disabled>保存</button>
-          <button class="btn btn--danger"  id="deleteBtn" disabled>削除</button>
-        </div>
-      </div>
-      <textarea class="editor" id="editor" placeholder="JSON を入力してください" disabled></textarea>
-      <p class="editor-error" id="editorError"></p>
-    </section>
+    <!-- ===== 右: メインビュー（ルーターが描画） ===== -->
+    <main class="view" id="view"></main>
 
-    <!-- ===== 右ペイン: 新規作成 ＋ アップロード ===== -->
-    <aside class="pane pane--right">
-
-      <!-- 新規 JSON 作成 -->
-      <div class="right-section">
-        <div class="pane__header">
-          <span class="pane__title">新規 JSON 作成</span>
-        </div>
-        <div class="right-section__inner">
-          <label class="form-label">
-            ファイルパス
-            <span class="form-hint">例: subdir/data.json</span>
-            <input class="form-input" type="text" id="newPath"
-                   placeholder="path/to/file.json">
-          </label>
-          <label class="form-label">
-            内容 (JSON)
-            <textarea class="form-textarea" id="newContent"
-                      placeholder='{"key": "value"}'></textarea>
-          </label>
-          <p class="editor-error" id="createError"></p>
-          <button class="btn btn--primary btn--full" id="createBtn">作成</button>
-        </div>
-      </div>
-
-      <!-- ファイルアップロード -->
-      <div class="right-section right-section--upload">
-        <div class="pane__header">
-          <span class="pane__title">ファイルアップロード</span>
-        </div>
-        <div class="right-section__inner">
-          <label class="form-label">
-            ファイルパス
-            <span class="form-hint">例: subdir/ （格納先フォルダ、空欄でルート）</span>
-            <input class="form-input" type="text" id="uploadDir"
-                   placeholder="path/to/folder/">
-          </label>
-          <p class="editor-error" id="uploadError"></p>
-          <button class="btn btn--upload btn--full" id="uploadBtn">
-            ファイルを選択してアップロード
-          </button>
-        </div>
-      </div>
-
-    </aside>
-
-  </main>
+  </div>
 
   <!-- ===== ユーザー登録 / 名前変更モーダル ===== -->
   <div class="modal-overlay" id="userModal" hidden>
