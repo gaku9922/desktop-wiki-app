@@ -1,0 +1,313 @@
+import fs from 'fs';
+import path from 'path';
+import type {
+  Article,
+  ArticleDetail,
+  ArticleSummary,
+  AttachmentRef,
+  FileAttachment,
+  ResolvedAttachment,
+  SkillLabel,
+  WikiCategoryNode,
+  WikiTreeNode,
+} from '../shared/types';
+import SkillMatrix from './skillMatrix';
+
+// 記事ディレクトリ名（UGB + 数字）
+const ARTICLE_DIR_RE = /^UGB\d+$/;
+// 共有サーバ（外部）パスの存在確認タイムアウト。到達不能でUIを固めないため
+const EXTERNAL_TIMEOUT_MS = 2000;
+
+// ------------------------------------------------------------------ //
+//  パスの存在確認。外部（共有サーバ）はタイムアウト付き
+// ------------------------------------------------------------------ //
+async function pathExists(p: string, external: boolean): Promise<boolean> {
+  if (!p) return false;
+  const check = fs.promises
+    .access(p, fs.constants.F_OK)
+    .then(() => true)
+    .catch(() => false);
+  if (!external) return check;
+  const timeout = new Promise<boolean>((resolve) =>
+    setTimeout(() => resolve(false), EXTERNAL_TIMEOUT_MS),
+  );
+  return Promise.race([check, timeout]);
+}
+
+// 添付ダウンロードのためにメインへ渡す解決結果
+export type DownloadTarget =
+  | {
+      kind: 'file' | 'folder';
+      absPath: string;
+      name: string;
+      exists: boolean;
+      external: boolean;
+    }
+  | { kind: 'article'; linkedId: string }
+  | null;
+
+export default class ArticleManager {
+  private readonly rootDir: string;
+  private readonly matrix: SkillMatrix;
+  private cache: {
+    tree: WikiTreeNode[];
+    summaries: ArticleSummary[];
+    byId: Map<string, ArticleSummary>;
+  } | null = null;
+
+  constructor(rootDir: string, matrix: SkillMatrix) {
+    this.rootDir = path.resolve(rootDir);
+    this.matrix = matrix;
+  }
+
+  // 書き込み・削除後などにキャッシュを無効化する
+  invalidate(): void {
+    this.cache = null;
+  }
+
+  getTree(): WikiTreeNode[] {
+    return this.ensureIndex().tree;
+  }
+
+  getIndex(): ArticleSummary[] {
+    return this.ensureIndex().summaries;
+  }
+
+  // ------------------------------------------------------------------ //
+  //  インデックス構築（遅延・キャッシュ）
+  // ------------------------------------------------------------------ //
+  private ensureIndex() {
+    if (!this.cache) {
+      const summaries: ArticleSummary[] = [];
+      const byId = new Map<string, ArticleSummary>();
+      const tree = this.walk(this.rootDir, [], summaries, byId);
+      this.cache = { tree, summaries, byId };
+    }
+    return this.cache;
+  }
+
+  //  カテゴリディレクトリを再帰走査し、ツリーとサマリを構築する
+  private walk(
+    absDir: string,
+    categoryPath: string[],
+    summaries: ArticleSummary[],
+    byId: Map<string, ArticleSummary>,
+  ): WikiTreeNode[] {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+
+    const nodes: WikiTreeNode[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const name = entry.name;
+      const abs = path.join(absDir, name);
+
+      if (ARTICLE_DIR_RE.test(name)) {
+        // 記事ディレクトリ。attachments/ は辿らない
+        const jsonPath = path.join(abs, `${name}.json`);
+        if (!fs.existsSync(jsonPath)) continue;
+        let article: Article;
+        try {
+          article = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as Article;
+        } catch {
+          continue;
+        }
+        const summary: ArticleSummary = {
+          id: article.id ?? name,
+          title: article.title ?? name,
+          author: article.author ?? '',
+          createdAt: article.createdAt ?? '',
+          updatedAt: article.updatedAt ?? '',
+          tags: Array.isArray(article.tags) ? article.tags : [],
+          relativePath: this.toRel(jsonPath),
+          categoryPath: [...categoryPath],
+        };
+        summaries.push(summary);
+        byId.set(summary.id, summary);
+        nodes.push({
+          type: 'article',
+          id: summary.id,
+          title: summary.title,
+          relativePath: summary.relativePath,
+        });
+      } else if (name === 'attachments') {
+        // カテゴリ階層に紛れる添付ディレクトリは無視
+        continue;
+      } else {
+        // カテゴリディレクトリ
+        const children = this.walk(
+          abs,
+          [...categoryPath, name],
+          summaries,
+          byId,
+        );
+        const category: WikiCategoryNode = {
+          type: 'category',
+          name,
+          path: [...categoryPath, name],
+          children,
+        };
+        nodes.push(category);
+      }
+    }
+
+    // カテゴリ優先 → 名前順
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'category' ? -1 : 1;
+      const an = a.type === 'category' ? a.name : a.title;
+      const bn = b.type === 'category' ? b.name : b.title;
+      return an.localeCompare(bn, 'ja');
+    });
+    return nodes;
+  }
+
+  private toRel(abs: string): string {
+    return path.relative(this.rootDir, abs).split(path.sep).join('/');
+  }
+
+  private articleDirOf(summary: ArticleSummary): string {
+    // relativePath = .../UGBxxxx/UGBxxxx.json → 記事ディレクトリはその親
+    return path.dirname(path.resolve(this.rootDir, summary.relativePath));
+  }
+
+  private readArticle(
+    id: string,
+  ): { article: Article; summary: ArticleSummary } | null {
+    const { byId } = this.ensureIndex();
+    const summary = byId.get(id);
+    if (!summary) return null;
+    try {
+      const abs = path.resolve(this.rootDir, summary.relativePath);
+      const article = JSON.parse(fs.readFileSync(abs, 'utf-8')) as Article;
+      return { article, summary };
+    } catch {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------------ //
+  //  記事詳細（添付の解決メタ・skill/business ラベルを付与）
+  // ------------------------------------------------------------------ //
+  async getArticleDetail(id: string): Promise<ArticleDetail | null> {
+    const found = this.readArticle(id);
+    if (!found) return null;
+    const { article, summary } = found;
+    const { byId } = this.ensureIndex();
+
+    const refs: AttachmentRef[] = Array.isArray(article.attachments)
+      ? article.attachments
+      : [];
+    const attachments: ResolvedAttachment[] = [];
+    for (const ref of refs) {
+      attachments.push(await this.resolveAttachment(ref, summary, byId));
+    }
+
+    const skill: SkillLabel[] = (article.spaceSkill?.skill ?? []).map((sid) => ({
+      id: sid,
+      label: this.matrix.skillLabel(sid),
+    }));
+    const business: SkillLabel[] = (article.spaceSkill?.business ?? []).map(
+      (bid) => ({ id: bid, label: this.matrix.businessLabel(bid) }),
+    );
+
+    return {
+      article,
+      categoryPath: summary.categoryPath,
+      attachments,
+      skill,
+      business,
+    };
+  }
+
+  private async resolveAttachment(
+    ref: AttachmentRef,
+    summary: ArticleSummary,
+    byId: Map<string, ArticleSummary>,
+  ): Promise<ResolvedAttachment> {
+    if (ref.type === 'article') {
+      const linked = byId.get(ref.id);
+      return {
+        kind: 'article',
+        method: 'Article',
+        displayName: linked?.title ?? ref.id,
+        exists: !!linked,
+        linkedId: ref.id,
+        linkedTitle: linked?.title,
+      };
+    }
+    const abs = this.attachmentAbsPath(ref, summary);
+    const external = ref.method === 'inFileServer';
+    const exists = await pathExists(abs, external);
+    return {
+      kind: ref.type,
+      method: ref.method,
+      displayName: ref.name,
+      ext: ref.ext,
+      exists,
+      path: abs,
+    };
+  }
+
+  //  inArticleDir は保存済みパスを信用せず記事ディレクトリから再構築、
+  //  inFileServer は保存済み絶対パスをそのまま使う
+  private attachmentAbsPath(
+    ref: FileAttachment,
+    summary: ArticleSummary,
+  ): string {
+    if (ref.method === 'inArticleDir') {
+      return path.join(this.articleDirOf(summary), 'attachments', ref.name);
+    }
+    return ref.path ?? '';
+  }
+
+  private isWithinRoot(abs: string): boolean {
+    const resolved = path.resolve(abs);
+    return (
+      resolved === this.rootDir || resolved.startsWith(this.rootDir + path.sep)
+    );
+  }
+
+  // ------------------------------------------------------------------ //
+  //  添付ダウンロード用の解決。renderer は id + index のみを渡すため、
+  //  ここで記事データと突き合わせて実パスを決める（任意パス要求を防ぐ）
+  // ------------------------------------------------------------------ //
+  async resolveForDownload(
+    articleId: string,
+    index: number,
+  ): Promise<DownloadTarget> {
+    const found = this.readArticle(articleId);
+    if (!found) return null;
+    const refs: AttachmentRef[] = Array.isArray(found.article.attachments)
+      ? found.article.attachments
+      : [];
+    const ref = refs[index];
+    if (!ref) return null;
+    if (ref.type === 'article') return { kind: 'article', linkedId: ref.id };
+
+    const abs = this.attachmentAbsPath(ref, found.summary);
+    // inArticleDir は ROOT_DIR 内に封じ込め
+    if (ref.method === 'inArticleDir' && !this.isWithinRoot(abs)) return null;
+    const external = ref.method === 'inFileServer';
+    const exists = await pathExists(abs, external);
+    return { kind: ref.type, absPath: abs, name: ref.name, exists, external };
+  }
+
+  // ファイル: 選択パスへコピー
+  async copyFile(src: string, destPath: string): Promise<void> {
+    await fs.promises.copyFile(src, destPath);
+  }
+
+  // フォルダ: 選択ディレクトリ配下へ「そのまま」再帰コピー（ZIP化しない）
+  async copyFolder(src: string, destDir: string): Promise<void> {
+    const dest = path.join(destDir, path.basename(src));
+    await fs.promises.cp(src, dest, {
+      recursive: true,
+      force: true,
+      errorOnExist: false,
+    });
+  }
+}

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { FileAPI, JsonValue, UserAPI } from '../shared/types';
+import type { ArticleAPI, FileAPI, JsonValue, UserAPI } from '../shared/types';
 
 // ------------------------------------------------------------------ //
 //  フロントエンドに公開するAPIの定義
@@ -35,7 +35,24 @@ const userAPI: UserAPI = {
 };
 
 // ------------------------------------------------------------------ //
+//  記事系 API の定義
+// ------------------------------------------------------------------ //
+const articleAPI: ArticleAPI = {
+  tree: () => ipcRenderer.invoke('article:tree'),
+
+  index: () => ipcRenderer.invoke('article:index'),
+
+  get: (id: string) => ipcRenderer.invoke('article:get', { id }),
+
+  downloadAttachment: (articleId: string, attachmentIndex: number) =>
+    ipcRenderer.invoke('attach:download', { articleId, attachmentIndex }),
+
+  refresh: () => ipcRenderer.invoke('article:refresh'),
+};
+
+// ------------------------------------------------------------------ //
 //  APIの公開
 // ------------------------------------------------------------------ //
 contextBridge.exposeInMainWorld('fileAPI', fileAPI);
 contextBridge.exposeInMainWorld('userAPI', userAPI);
+contextBridge.exposeInMainWorld('articleAPI', articleAPI);

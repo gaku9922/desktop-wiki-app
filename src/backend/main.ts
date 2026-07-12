@@ -2,7 +2,12 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import dotenv from 'dotenv';
 import FileManager from './fileManager';
+import ArticleManager from './articleManager';
+import SkillMatrix from './skillMatrix';
 import type {
+  ArticleGetPayload,
+  AttachDownloadPayload,
+  AttachDownloadResult,
   DeletePayload,
   DownloadPayload,
   ReadPayload,
@@ -44,7 +49,11 @@ const createWindow = (): void => {
 // ------------------------------------------------------------------ //
 //  IPC ハンドラ登録
 // ------------------------------------------------------------------ //
-const registerIpcHandlers = (fm: FileManager, userFm: FileManager): void => {
+const registerIpcHandlers = (
+  fm: FileManager,
+  userFm: FileManager,
+  am: ArticleManager,
+): void => {
   // ROOT_DIR のパスを返す
   ipcMain.handle('fs:getRootDir', () => ROOT_DIR);
 
@@ -59,14 +68,76 @@ const registerIpcHandlers = (fm: FileManager, userFm: FileManager): void => {
   // JSON ファイルを書き込む（新規作成 / 上書き）
   ipcMain.handle('fs:write', (_event, { relativePath, data }: WritePayload) => {
     fm.writeJson(relativePath, data);
+    am.invalidate();
     return fm.listTree();
   });
 
   // JSON ファイルを削除する
   ipcMain.handle('fs:delete', (_event, { relativePath }: DeletePayload) => {
     fm.deleteJson(relativePath);
+    am.invalidate();
     return fm.listTree();
   });
+
+  // ------------------------------------------------------------------ //
+  //  Wiki記事: サイドバーツリー / 一覧インデックス / 記事詳細 / 再構築
+  // ------------------------------------------------------------------ //
+  ipcMain.handle('article:tree', () => am.getTree());
+
+  ipcMain.handle('article:index', () => am.getIndex());
+
+  ipcMain.handle('article:get', (_event, { id }: ArticleGetPayload) =>
+    am.getArticleDetail(id),
+  );
+
+  ipcMain.handle('article:refresh', () => {
+    am.invalidate();
+  });
+
+  // ------------------------------------------------------------------ //
+  //  添付ダウンロード: file はコピー、folder はそのまま再帰コピー
+  //  パス切れ（存在しない）は missing を返す
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'attach:download',
+    async (
+      _event,
+      { articleId, attachmentIndex }: AttachDownloadPayload,
+    ): Promise<AttachDownloadResult> => {
+      try {
+        const target = await am.resolveForDownload(articleId, attachmentIndex);
+        if (!target || target.kind === 'article') {
+          return { status: 'error', message: '添付が見つかりません。' };
+        }
+        if (!target.exists) {
+          return { status: 'missing', path: target.absPath };
+        }
+
+        if (target.kind === 'file') {
+          const { canceled, filePath } = await dialog.showSaveDialog({
+            defaultPath: target.name,
+          });
+          if (canceled || !filePath) return { status: 'canceled' };
+          await am.copyFile(target.absPath, filePath);
+          return { status: 'ok' };
+        }
+
+        // folder
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+          title: '保存先フォルダを選択',
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        if (canceled || filePaths.length === 0) return { status: 'canceled' };
+        await am.copyFolder(target.absPath, filePaths[0]);
+        return { status: 'ok' };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
 
   // ------------------------------------------------------------------ //
   //  ダウンロード: ネイティブの「名前を付けて保存」ダイアログを開く
@@ -132,7 +203,12 @@ app.whenReady().then(() => {
   // ユーザー情報は OS のユーザーデータ領域に保存する。
   // ここは NSIS 等でインストールした後でも書き込み可能な領域。
   const userFm = new FileManager(app.getPath('userData'));
-  registerIpcHandlers(fm, userFm);
+  // 記事インデックス。skill/business ラベルは matrix CSV から解決する。
+  const matrix = new SkillMatrix(
+    path.join(app.getAppPath(), 'matrix', 'uchu_skill_business_map.csv'),
+  );
+  const am = new ArticleManager(ROOT_DIR, matrix);
+  registerIpcHandlers(fm, userFm, am);
   createWindow();
 
   app.on('activate', () => {
