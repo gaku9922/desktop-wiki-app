@@ -1,0 +1,41 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { FileAPI, JsonValue, UserAPI } from '../shared/types';
+
+// ------------------------------------------------------------------ //
+//  フロントエンドに公開するAPIの定義
+// ------------------------------------------------------------------ //
+const fileAPI: FileAPI = {
+  getRootDir: () => ipcRenderer.invoke('fs:getRootDir'),
+
+  list: () => ipcRenderer.invoke('fs:list'),
+
+  read: (relativePath: string) =>
+    ipcRenderer.invoke('fs:read', { relativePath }),
+
+  write: (relativePath: string, data: JsonValue) =>
+    ipcRenderer.invoke('fs:write', { relativePath, data }),
+
+  delete: (relativePath: string) =>
+    ipcRenderer.invoke('fs:delete', { relativePath }),
+
+  download: (relativePath: string) =>
+    ipcRenderer.invoke('fs:download', { relativePath }),
+
+  upload: (destRelativeDir: string) =>
+    ipcRenderer.invoke('fs:upload', { destRelativeDir }),
+};
+
+// ------------------------------------------------------------------ //
+//  ユーザー情報 API の定義
+// ------------------------------------------------------------------ //
+const userAPI: UserAPI = {
+  get: () => ipcRenderer.invoke('user:get'),
+
+  save: (name: string) => ipcRenderer.invoke('user:save', { name }),
+};
+
+// ------------------------------------------------------------------ //
+//  APIの公開
+// ------------------------------------------------------------------ //
+contextBridge.exposeInMainWorld('fileAPI', fileAPI);
+contextBridge.exposeInMainWorld('userAPI', userAPI);

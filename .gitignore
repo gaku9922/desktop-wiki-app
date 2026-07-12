@@ -1,0 +1,24 @@
+# Node.js関連（超重要: 依存パッケージそのものは含めない）
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OSのシステムファイル（MacやWindowsが勝手に作る不要なファイル）
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 将来のビルド出力用（アプリをexeやappにパッケージ化した時の出力先）
+dist/
+build/
+out/
+release/
+
+# 環境変数（将来APIキーなどを扱うようになった時のため）
+.env
