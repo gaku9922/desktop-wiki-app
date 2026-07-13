@@ -109,9 +109,10 @@ export interface SpaceSkill {
 export interface Article {
   id: string;
   title: string;
-  author: string;
   createdAt: string; // ISO 8601 JST: "YYYY-MM-DDTHH:MM:SS+09:00"
+  createdBy: string; // 作成者
   updatedAt: string;
+  updatedBy: string; // 更新者
   tags: string[];
   spaceSkill: SpaceSkill;
   body: string;
@@ -122,9 +123,10 @@ export interface Article {
 export interface ArticleSummary {
   id: string;
   title: string;
-  author: string;
   createdAt: string;
+  createdBy: string;
   updatedAt: string;
+  updatedBy: string;
   tags: string[];
   relativePath: string;   // 例: プロジェクト別/H3/UGB0006/UGB0006.json
   categoryPath: string[]; // 例: ["プロジェクト別","H3"]
