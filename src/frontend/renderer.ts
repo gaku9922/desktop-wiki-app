@@ -543,6 +543,7 @@ const METHOD_BADGE: Record<string, { text: string; cls: string }> = {
   inArticleDir: { text: '記事内', cls: 'badge--in' },
   inFileServer: { text: 'サーバ参照', cls: 'badge--server' },
   Article: { text: '関連記事', cls: 'badge--article' },
+  externalUrl: { text: '外部リンク', cls: 'badge--link' },
 };
 
 function attachmentList(articleId: string, atts: ResolvedAttachment[]): HTMLElement {
@@ -556,6 +557,8 @@ function attachmentList(articleId: string, atts: ResolvedAttachment[]): HTMLElem
     const row = el('div', {
       class: `attach-row${broken ? ' attach-row--broken' : ''}`,
     });
+    // 外部リンクはホバーでURLを表示
+    if (att.kind === 'link' && att.url) row.title = att.url;
 
     const icon = el('span', { class: 'attach-row__icon', text: attachIcon(att) });
     const name = el('span', { class: 'attach-row__name', text: att.displayName });
@@ -566,7 +569,8 @@ function attachmentList(articleId: string, atts: ResolvedAttachment[]): HTMLElem
     row.append(icon, name, badge);
 
     if (broken) {
-      row.append(el('span', { class: 'attach-row__warn', text: '⚠ パス切れ' }));
+      const warnText = att.kind === 'link' ? '⚠ 無効なリンク' : '⚠ パス切れ';
+      row.append(el('span', { class: 'attach-row__warn', text: warnText }));
     }
 
     row.addEventListener('click', () => onAttachmentClick(articleId, index, att));
@@ -577,6 +581,7 @@ function attachmentList(articleId: string, atts: ResolvedAttachment[]): HTMLElem
 
 function attachIcon(att: ResolvedAttachment): string {
   if (att.kind === 'article') return '🔗';
+  if (att.kind === 'link') return '🌐';
   if (att.kind === 'folder') return '📁';
   return '📄';
 }
@@ -590,6 +595,22 @@ async function onAttachmentClick(
   if (att.kind === 'article') {
     if (att.exists && att.linkedId) navigate(`#/article/${att.linkedId}`);
     else showToast('関連記事が見つかりません（リンク切れ）', 'warn');
+    return;
+  }
+  // 外部リンク → 既定ブラウザで開く（http/https のみ）
+  if (att.kind === 'link') {
+    if (!att.exists) {
+      showToast('無効なリンクです（http / https のみ対応）', 'warn');
+      return;
+    }
+    try {
+      const result = await window.articleAPI.openLink(articleId, index);
+      if (result.status === 'ok') showToast('ブラウザで開きました');
+      else if (result.status === 'invalid') showToast('無効なリンクです（http / https のみ対応）', 'warn');
+      else showToast(`リンクを開けません: ${result.message}`, 'error');
+    } catch (err) {
+      showToast(`リンクを開けません: ${errorMessage(err)}`, 'error');
+    }
     return;
   }
   // パス切れ → 警告（DLは試みない）

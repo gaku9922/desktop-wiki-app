@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import dotenv from 'dotenv';
 import FileManager from './fileManager';
@@ -10,6 +10,8 @@ import type {
   AttachDownloadResult,
   DeletePayload,
   DownloadPayload,
+  OpenLinkPayload,
+  OpenLinkResult,
   ReadPayload,
   SaveUserPayload,
   UploadPayload,
@@ -129,6 +131,34 @@ const registerIpcHandlers = (
         });
         if (canceled || filePaths.length === 0) return { status: 'canceled' };
         await am.copyFolder(target.absPath, filePaths[0]);
+        return { status: 'ok' };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------ //
+  //  外部リンク: 既定ブラウザで開く。http/https のみ許可（スキーム検証）
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'link:open',
+    async (
+      _event,
+      { articleId, attachmentIndex }: OpenLinkPayload,
+    ): Promise<OpenLinkResult> => {
+      const resolved = am.resolveLinkForOpen(articleId, attachmentIndex);
+      if (!resolved) return { status: 'invalid' };
+      try {
+        // 多層防御: 開く直前にもスキームを再検証
+        const proto = new URL(resolved.url).protocol;
+        if (proto !== 'http:' && proto !== 'https:') {
+          return { status: 'invalid', url: resolved.url };
+        }
+        await shell.openExternal(resolved.url);
         return { status: 'ok' };
       } catch (err) {
         return {

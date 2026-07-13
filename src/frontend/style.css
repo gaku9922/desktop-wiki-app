@@ -416,6 +416,7 @@ button { font-family: inherit; }
 .badge--in { background: #e6f4ec; color: var(--success); }
 .badge--server { background: var(--warn-light); color: var(--warn); }
 .badge--article { background: var(--accent-light); color: var(--accent-dark); }
+.badge--link { background: #eae6fb; color: #4a3f9e; }
 
 /* ================================================================== */
 /*  Toast                                                             */

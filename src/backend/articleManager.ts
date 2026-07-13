@@ -18,6 +18,16 @@ const ARTICLE_DIR_RE = /^UGB\d+$/;
 // 共有サーバ（外部）パスの存在確認タイムアウト。到達不能でUIを固めないため
 const EXTERNAL_TIMEOUT_MS = 2000;
 
+// 外部リンクは http / https のみ許可する
+function isHttpUrl(url: string): boolean {
+  try {
+    const proto = new URL(url).protocol;
+    return proto === 'http:' || proto === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // ------------------------------------------------------------------ //
 //  パスの存在確認。外部（共有サーバ）はタイムアウト付き
 // ------------------------------------------------------------------ //
@@ -240,6 +250,15 @@ export default class ArticleManager {
         linkedTitle: linked?.title,
       };
     }
+    if (ref.type === 'link') {
+      return {
+        kind: 'link',
+        method: 'externalUrl',
+        displayName: ref.name || ref.url,
+        exists: isHttpUrl(ref.url), // http/https でなければ無効として警告表示
+        url: ref.url,
+      };
+    }
     const abs = this.attachmentAbsPath(ref, summary);
     const external = ref.method === 'inFileServer';
     const exists = await pathExists(abs, external);
@@ -288,6 +307,7 @@ export default class ArticleManager {
     const ref = refs[index];
     if (!ref) return null;
     if (ref.type === 'article') return { kind: 'article', linkedId: ref.id };
+    if (ref.type === 'link') return null; // link はダウンロード対象ではない
 
     const abs = this.attachmentAbsPath(ref, found.summary);
     // inArticleDir は ROOT_DIR 内に封じ込め
@@ -295,6 +315,22 @@ export default class ArticleManager {
     const external = ref.method === 'inFileServer';
     const exists = await pathExists(abs, external);
     return { kind: ref.type, absPath: abs, name: ref.name, exists, external };
+  }
+
+  // ------------------------------------------------------------------ //
+  //  外部リンクを開くための解決。renderer は id + index のみを渡すため、
+  //  記事データからURLを取り出し http/https のみ許可する（任意URL注入を防ぐ）
+  // ------------------------------------------------------------------ //
+  resolveLinkForOpen(articleId: string, index: number): { url: string } | null {
+    const found = this.readArticle(articleId);
+    if (!found) return null;
+    const refs: AttachmentRef[] = Array.isArray(found.article.attachments)
+      ? found.article.attachments
+      : [];
+    const ref = refs[index];
+    if (!ref || ref.type !== 'link') return null;
+    if (!isHttpUrl(ref.url)) return null;
+    return { url: ref.url };
   }
 
   // ファイル: 選択パスへコピー
