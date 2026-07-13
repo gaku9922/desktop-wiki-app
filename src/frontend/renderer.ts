@@ -128,8 +128,8 @@ function buildTreeList(nodes: WikiTreeNode[], depth: number): HTMLUListElement {
   const ul = el('ul', { class: 'tree__list' });
   for (const node of nodes) {
     if (node.type === 'category') {
-      // 第1階層（depth 0）のみ展開、第2階層以降は初期状態で折りたたむ
-      const startClosed = depth >= 1;
+      // 初期状態で全階層折りたたみ
+      const startClosed = depth >= 0;
       const li = el('li', { class: 'tree__item tree__item--category' });
       if (startClosed) li.classList.add('tree__item--closed');
       const row = el('div', { class: 'tree__row tree__row--category' });
