@@ -47,6 +47,9 @@ const articleAPI: ArticleAPI = {
   downloadAttachment: (articleId: string, attachmentIndex: number) =>
     ipcRenderer.invoke('attach:download', { articleId, attachmentIndex }),
 
+  openLink: (articleId: string, attachmentIndex: number) =>
+    ipcRenderer.invoke('link:open', { articleId, attachmentIndex }),
+
   refresh: () => ipcRenderer.invoke('article:refresh'),
 };
 

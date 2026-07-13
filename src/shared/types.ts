@@ -79,8 +79,12 @@ export interface SaveUserPayload {
 //  Wikiアプリ: 記事ドメインモデル
 // ================================================================== //
 
-//  添付方式。type は file / folder / article、method は保存場所を表す
-export type AttachmentMethod = 'inArticleDir' | 'inFileServer' | 'Article';
+//  添付方式。type は file / folder / article / link、method は保存場所・種別を表す
+export type AttachmentMethod =
+  | 'inArticleDir'
+  | 'inFileServer'
+  | 'Article'
+  | 'externalUrl';
 
 //  ファイル / フォルダ添付（記事内 or 共有サーバ）
 export interface FileAttachment {
@@ -98,7 +102,15 @@ export interface ArticleAttachment {
   id: string;
 }
 
-export type AttachmentRef = FileAttachment | ArticleAttachment;
+//  外部リンクの添付（既定ブラウザで開く）。url は http/https のみ許可
+export interface LinkAttachment {
+  type: 'link';
+  method: 'externalUrl';
+  url: string;
+  name?: string; // 表示名（省略時は url を表示）
+}
+
+export type AttachmentRef = FileAttachment | ArticleAttachment | LinkAttachment;
 
 export interface SpaceSkill {
   business: string[];
@@ -151,12 +163,13 @@ export type WikiTreeNode = WikiCategoryNode | WikiArticleNode;
 
 //  記事閲覧時、添付は解決済みメタを付与して返す
 export interface ResolvedAttachment {
-  kind: 'file' | 'folder' | 'article';
+  kind: 'file' | 'folder' | 'article' | 'link';
   method: AttachmentMethod;
   displayName: string;
   ext?: string;
-  exists: boolean;      // file/folder: 実在チェック / article: ID解決可否
+  exists: boolean;      // file/folder: 実在チェック / article: ID解決可否 / link: URL形式が妥当か
   path?: string;        // file/folder: 解決済みパス（パス切れ警告の表示用）
+  url?: string;         // link: 外部URL
   linkedId?: string;    // article: 遷移先ID
   linkedTitle?: string; // article: 遷移先タイトル
 }
@@ -183,6 +196,12 @@ export type AttachDownloadResult =
   | { status: 'missing'; path: string }
   | { status: 'error'; message: string };
 
+//  外部リンクを開いた結果
+export type OpenLinkResult =
+  | { status: 'ok' }
+  | { status: 'invalid'; url?: string } // http/https 以外、または不正なURL
+  | { status: 'error'; message: string };
+
 // ------------------------------------------------------------------ //
 //  記事系 API（ファイル操作とは別系統）
 // ------------------------------------------------------------------ //
@@ -194,6 +213,10 @@ export interface ArticleAPI {
     articleId: string,
     attachmentIndex: number,
   ): Promise<AttachDownloadResult>;
+  openLink(
+    articleId: string,
+    attachmentIndex: number,
+  ): Promise<OpenLinkResult>;
   refresh(): Promise<void>;
 }
 
@@ -202,6 +225,11 @@ export interface ArticleGetPayload {
 }
 
 export interface AttachDownloadPayload {
+  articleId: string;
+  attachmentIndex: number;
+}
+
+export interface OpenLinkPayload {
   articleId: string;
   attachmentIndex: number;
 }
