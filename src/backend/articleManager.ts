@@ -119,9 +119,10 @@ export default class ArticleManager {
         const summary: ArticleSummary = {
           id: article.id ?? name,
           title: article.title ?? name,
-          author: article.author ?? '',
           createdAt: article.createdAt ?? '',
+          createdBy: article.createdBy ?? '',
           updatedAt: article.updatedAt ?? '',
+          updatedBy: article.updatedBy ?? '',
           tags: Array.isArray(article.tags) ? article.tags : [],
           relativePath: this.toRel(jsonPath),
           categoryPath: [...categoryPath],

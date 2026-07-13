@@ -302,7 +302,7 @@ function latestRow(s: ArticleSummary): HTMLLIElement {
   ]);
   const meta = el('div', { class: 'latest-item__meta' }, [
     el('span', { class: 'latest-item__date', text: `更新 ${fmtDateTime(s.updatedAt)}` }),
-    el('span', { class: 'latest-item__author', text: s.author }),
+    el('span', { class: 'latest-item__author', text: s.updatedBy }),
   ]);
   const tags = el('div', { class: 'tag-row' });
   for (const t of s.tags) tags.appendChild(el('span', { class: 'tag', text: t }));
@@ -466,12 +466,11 @@ async function renderArticle(id: string): Promise<void> {
 
   page.appendChild(el('h1', { class: 'article__title', text: a.title }));
 
-  // メタ
+  // メタ（作成日＋作成者 / 更新日＋更新者 をそれぞれ並べる。折り返し可）
   const meta = el('div', { class: 'article__meta' }, [
-    metaItem('著者', a.author),
     metaItem('ID', a.id),
-    metaItem('作成', fmtDateTime(a.createdAt)),
-    metaItem('更新', fmtDateTime(a.updatedAt)),
+    metaItem('作成', `${fmtDateTime(a.createdAt)} ・ ${a.createdBy}`),
+    metaItem('更新', `${fmtDateTime(a.updatedAt)} ・ ${a.updatedBy}`),
   ]);
   page.appendChild(meta);
 
