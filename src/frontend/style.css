@@ -294,45 +294,24 @@ button { font-family: inherit; }
 /* ================================================================== */
 /*  Directory (category) page                                         */
 /* ================================================================== */
-.page--category { container-type: inline-size; }
 .cat__title { font-size: 22px; margin: 0 0 20px; }
-.cat-section { margin-bottom: 28px; }
 
-.dir-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-/* コンテナ（メインビュー内のページ幅）に応じて Max 4 列 → 3 → 2 → 1 */
-@container (min-width: 400px) { .dir-grid { grid-template-columns: repeat(2, 1fr); } }
-@container (min-width: 580px) { .dir-grid { grid-template-columns: repeat(3, 1fr); } }
-@container (min-width: 760px) { .dir-grid { grid-template-columns: repeat(4, 1fr); } }
-
-.dir-card {
+/* ディレクトリ行（子記事行と同じ一覧に並ぶ。エクスプローラ風） */
+.latest-item--dir { align-items: center; cursor: pointer; }
+.dir-row__left {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  text-align: left;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
-.dir-card:hover { border-color: var(--accent); background: var(--accent-light); }
-.dir-card__icon { font-size: 22px; line-height: 1; }
-.dir-card__name {
+.dir-row__icon { font-size: 16px; line-height: 1; flex-shrink: 0; }
+.dir-row__name {
   font-weight: 600;
-  font-size: 14px;
-  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dir-card__count { font-size: 12px; color: var(--text-faint); }
+.dir-row__count { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
 
 /* ================================================================== */
 /*  Article page                                                      */

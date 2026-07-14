@@ -387,52 +387,33 @@ function renderCategory(path: string[]): void {
     .filter((s) => s.categoryPath.join('/') === targetKey)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  // ---- 上: 子ディレクトリ（レスポンシブなカードグリッド）----
-  const topSec = el('section', { class: 'cat-section' });
-  topSec.append(
-    el('div', { class: 'section-head' }, [
-      el('h2', { class: 'section-title', text: '子ディレクトリ' }),
-      el('span', { class: 'section-sub', text: `${childCategories.length} 件` }),
-    ]),
-  );
-  if (childCategories.length === 0) {
-    topSec.append(el('p', { class: 'placeholder', text: '子ディレクトリはありません' }));
-  } else {
-    const grid = el('div', { class: 'dir-grid' });
-    for (const c of childCategories) grid.append(dirCard(c));
-    topSec.append(grid);
+  // ---- 子ディレクトリと子記事を同一リストに（エクスプローラ風）----
+  //  並び順: ディレクトリが先、その後に記事
+  if (childCategories.length === 0 && childArticles.length === 0) {
+    page.append(el('p', { class: 'placeholder', text: '空のディレクトリです' }));
+    viewEl.appendChild(page);
+    return;
   }
-  page.append(topSec);
 
-  // ---- 下: 子記事（トップの最新更新記事と同じ表示）----
-  const botSec = el('section', { class: 'cat-section' });
-  botSec.append(
-    el('div', { class: 'section-head' }, [
-      el('h2', { class: 'section-title', text: '記事' }),
-      el('span', { class: 'section-sub', text: `${childArticles.length} 件` }),
-    ]),
-  );
-  if (childArticles.length === 0) {
-    botSec.append(el('p', { class: 'placeholder', text: '記事はありません' }));
-  } else {
-    const list = el('ul', { class: 'latest-list' });
-    for (const s of childArticles) list.append(latestRow(s));
-    botSec.append(list);
-  }
-  page.append(botSec);
+  const list = el('ul', { class: 'latest-list' });
+  for (const c of childCategories) list.append(dirRow(c));
+  for (const s of childArticles) list.append(latestRow(s));
+  page.append(list);
 
   viewEl.appendChild(page);
 }
 
-function dirCard(c: WikiCategoryNode): HTMLElement {
-  const card = el('button', { class: 'dir-card' });
-  card.append(
-    el('span', { class: 'dir-card__icon', text: '📁' }),
-    el('span', { class: 'dir-card__name', text: c.name }),
-    el('span', { class: 'dir-card__count', text: `${countArticles(c)} 記事` }),
-  );
-  card.addEventListener('click', () => navigate(categoryHash(c.path)));
-  return card;
+//  ディレクトリ行（フォルダアイコン + 名前 + 記事数）。記事行と同じ一覧に並ぶ
+function dirRow(c: WikiCategoryNode): HTMLLIElement {
+  const li = el('li', { class: 'latest-item latest-item--dir' });
+  const left = el('span', { class: 'dir-row__left' }, [
+    el('span', { class: 'dir-row__icon', text: '📁' }),
+    el('span', { class: 'dir-row__name', text: c.name }),
+  ]);
+  const count = el('span', { class: 'dir-row__count', text: `${countArticles(c)} 記事` });
+  li.append(left, count);
+  li.addEventListener('click', () => navigate(categoryHash(c.path)));
+  return li;
 }
 
 // ------------------------------------------------------------------ //
