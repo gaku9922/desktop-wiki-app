@@ -200,6 +200,17 @@ export default class ArticleManager {
     }
   }
 
+  //  本文の Markdown ファイル（<id>.md）を読む。無ければ空文字にフォールバック
+  private readBody(summary: ArticleSummary): string {
+    const jsonAbs = path.resolve(this.rootDir, summary.relativePath);
+    const mdAbs = jsonAbs.replace(/\.json$/, '.md');
+    try {
+      return fs.readFileSync(mdAbs, 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
   // ------------------------------------------------------------------ //
   //  記事詳細（添付の解決メタ・skill/business ラベルを付与）
   // ------------------------------------------------------------------ //
@@ -208,6 +219,9 @@ export default class ArticleManager {
     if (!found) return null;
     const { article, summary } = found;
     const { byId } = this.ensureIndex();
+
+    // 本文は別ファイル <id>.md から読み込む（JSON には body を持たない）
+    article.body = this.readBody(summary);
 
     const refs: AttachmentRef[] = Array.isArray(article.attachments)
       ? article.attachments

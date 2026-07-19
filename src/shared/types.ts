@@ -118,6 +118,7 @@ export interface SpaceSkill {
 }
 
 //  記事本体（UGBxxxx.json のスキーマ）
+//  ※ body は JSON には持たず、同ディレクトリの <id>.md から読み込む（メモリ上の表現）
 export interface Article {
   id: string;
   title: string;
@@ -127,7 +128,7 @@ export interface Article {
   updatedBy: string; // 更新者
   tags: string[];
   spaceSkill: SpaceSkill;
-  body: string;
+  body: string;      // 本文（<id>.md の内容。将来 Markdown レンダリング予定）
   attachments: AttachmentRef[];
 }
 
