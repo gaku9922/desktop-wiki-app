@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron';
 import path from 'path';
 import dotenv from 'dotenv';
 import FileManager from './fileManager';
@@ -48,6 +48,35 @@ const ROOT_DIR: string = process.env.ROOT_DIR ?? (() => {
 })();
 
 // ------------------------------------------------------------------ //
+//  共有リンク（カスタムURLスキーム）: ugbwiki://article/<ID>
+// ------------------------------------------------------------------ //
+const URL_SCHEME = 'ugbwiki';
+let mainWindow: BrowserWindow | null = null;
+// ウィンドウ準備前に受け取ったディープリンクを保留
+let pendingRoute: string | null = null;
+
+//  ugbwiki://article/UGB0001 → '#/article/UGB0001'（IDを厳格検証）
+const deepLinkToHash = (url: string): string | null => {
+  const m = new RegExp(`^${URL_SCHEME}://article/(UGB\\d+)/?$`, 'i').exec(url.trim());
+  return m ? `#/article/${m[1]}` : null;
+};
+
+//  ディープリンクを処理してレンダラーへ遷移指示（未準備なら保留）
+const handleDeepLink = (url: string): void => {
+  const hash = deepLinkToHash(url);
+  if (!hash) return;
+  if (mainWindow && !mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.send('app:navigate', hash);
+  } else {
+    pendingRoute = hash;
+  }
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+};
+
+// ------------------------------------------------------------------ //
 //  ウィンドウ生成
 // ------------------------------------------------------------------ //
 const createWindow = (): void => {
@@ -60,6 +89,17 @@ const createWindow = (): void => {
     },
   });
   win.loadFile(path.join(__dirname, '../frontend/index.html'));
+  mainWindow = win;
+  // 読み込み完了後、保留していたディープリンクを反映
+  win.webContents.on('did-finish-load', () => {
+    if (pendingRoute) {
+      win.webContents.send('app:navigate', pendingRoute);
+      pendingRoute = null;
+    }
+  });
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 };
 
 // ------------------------------------------------------------------ //
@@ -306,6 +346,11 @@ const registerIpcHandlers = (
     },
   );
 
+  // クリップボードへ書き込む（共有リンクのコピー用）
+  ipcMain.handle('clip:write', (_event, { text }: { text: string }) => {
+    clipboard.writeText(text);
+  });
+
   // ------------------------------------------------------------------ //
   //  新規ディレクトリ作成（親ディレクトリ配下）
   // ------------------------------------------------------------------ //
@@ -383,25 +428,65 @@ const registerIpcHandlers = (
 // ------------------------------------------------------------------ //
 //  起動
 // ------------------------------------------------------------------ //
-app.whenReady().then(() => {
-  const fm = new FileManager(ROOT_DIR);
-  // ユーザー情報は OS のユーザーデータ領域に保存する。
-  // ここは NSIS 等でインストールした後でも書き込み可能な領域。
-  const userFm = new FileManager(app.getPath('userData'));
-  // 記事インデックス。skill/business ラベルは matrix CSV から解決する。
-  const matrix = new SkillMatrix(
-    path.join(app.getAppPath(), 'matrix', 'uchu_skill_business_map.csv'),
-  );
-  const am = new ArticleManager(ROOT_DIR, matrix);
-  // お気に入りは userData にユーザーごとに保存する
-  const favorites = new FavoritesManager(userFm, am);
-  registerIpcHandlers(fm, userFm, am, matrix, favorites);
-  createWindow();
+// ------------------------------------------------------------------ //
+//  カスタムURLスキーム登録 + 単一インスタンス化（ディープリンク）
+// ------------------------------------------------------------------ //
+// dev（未パッケージ）では実行パスと引数を明示して登録する
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(URL_SCHEME, process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(URL_SCHEME);
+}
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // 既に起動中: このインスタンスは終了（URLは既存インスタンスへ渡る）
+  app.quit();
+} else {
+  // 起動中に2つ目が立ち上がった場合（Windows/Linux: argv でURLが渡る）
+  app.on('second-instance', (_event, argv) => {
+    const url = argv.find((a) => a.startsWith(`${URL_SCHEME}://`));
+    if (url) handleDeepLink(url);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
-});
+
+  // macOS: リンククリックで open-url が発火（起動前でも保留に積む）
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
+
+  app.whenReady().then(() => {
+    const fm = new FileManager(ROOT_DIR);
+    // ユーザー情報は OS のユーザーデータ領域に保存する。
+    // ここは NSIS 等でインストールした後でも書き込み可能な領域。
+    const userFm = new FileManager(app.getPath('userData'));
+    // 記事インデックス。skill/business ラベルは matrix CSV から解決する。
+    const matrix = new SkillMatrix(
+      path.join(app.getAppPath(), 'matrix', 'uchu_skill_business_map.csv'),
+    );
+    const am = new ArticleManager(ROOT_DIR, matrix);
+    // お気に入りは userData にユーザーごとに保存する
+    const favorites = new FavoritesManager(userFm, am);
+    registerIpcHandlers(fm, userFm, am, matrix, favorites);
+    createWindow();
+
+    // Windows/Linux のコールドスタート: 起動引数にURLがあれば反映
+    const startUrl = process.argv.find((a) => a.startsWith(`${URL_SCHEME}://`));
+    if (startUrl) handleDeepLink(startUrl);
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

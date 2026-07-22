@@ -9,6 +9,10 @@ const WIKI_DESCRIPTION =
 
 const LATEST_LIMIT = 30;
 
+//  共有リンクのカスタムURLスキーム（アプリがインストールされていれば開く）
+const SHARE_SCHEME = 'ugbwiki';
+const shareLinkFor = (id: string): string => `${SHARE_SCHEME}://article/${id}`;
+
 // ------------------------------------------------------------------ //
 //  DOM 参照
 // ------------------------------------------------------------------ //
@@ -1004,6 +1008,46 @@ function openConfirmModal(opts: {
   ok.focus();
 }
 
+//  共有リンク作成モーダル（リンク表示＋コピー）
+function openShareModal(id: string): void {
+  const link = shareLinkFor(id);
+  const input = document.createElement('input');
+  input.className = 'form-input';
+  input.readOnly = true;
+  input.value = link;
+
+  const copy = el('button', { class: 'btn btn--primary', text: 'コピー' });
+  const close = el('button', { class: 'btn', text: '閉じる' });
+
+  const overlay = el('div', { class: 'modal-overlay' }, [
+    el('div', { class: 'modal-card' }, [
+      el('h2', { class: 'modal-title', text: '共有リンクを作成' }),
+      el('p', {
+        class: 'modal-desc',
+        text: 'このアプリをインストールしている環境では、リンクを開くと該当記事が表示されます。',
+      }),
+      input,
+      el('div', { class: 'modal-actions' }, [close, copy]),
+    ]),
+  ]);
+  const dismiss = (): void => overlay.remove();
+  close.addEventListener('click', dismiss);
+  copy.addEventListener('click', async () => {
+    try {
+      await window.articleAPI.copyToClipboard(link);
+      showToast('共有リンクをコピーしました');
+    } catch (err) {
+      showToast(`コピーに失敗しました: ${errorMessage(err)}`, 'error');
+    }
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) dismiss();
+  });
+  document.body.appendChild(overlay);
+  input.focus();
+  input.select();
+}
+
 // ================================================================== //
 //  新規記事作成ページ
 // ================================================================== //
@@ -1719,6 +1763,13 @@ function articleMenu(detail: ArticleDetail): HTMLElement {
     else openMenu();
   });
 
+  const share = el('button', { class: 'kebab__item', text: '共有リンクを作成' });
+  share.addEventListener('click', () => {
+    closeMenu();
+    openShareModal(a.id);
+  });
+  menu.append(share);
+
   const del = el('button', { class: 'kebab__item kebab__item--danger', text: '記事を削除' });
   del.addEventListener('click', () => {
     closeMenu();
@@ -2058,6 +2109,11 @@ refreshBtn.addEventListener('click', refreshAll);
 homeLink.addEventListener('click', () => navigate('#/'));
 sidebarToggle.addEventListener('click', () => layoutEl.classList.toggle('layout--sidebar-hidden'));
 window.addEventListener('hashchange', render);
+
+// 共有リンク（ugbwiki://article/<ID>）経由の遷移
+window.articleAPI.onDeepLink((hash) => {
+  if (/^#\/article\/UGB\d+$/.test(hash)) navigate(hash);
+});
 
 // キーワード検索: Enter で実行
 searchKeyword.addEventListener('keydown', (e) => {

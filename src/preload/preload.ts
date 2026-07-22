@@ -73,6 +73,11 @@ const articleAPI: ArticleAPI = {
 
   search: (query: string) => ipcRenderer.invoke('article:search', { query }),
 
+  copyToClipboard: (text: string) => ipcRenderer.invoke('clip:write', { text }),
+
+  onDeepLink: (callback: (hash: string) => void) =>
+    ipcRenderer.on('app:navigate', (_event, hash: string) => callback(hash)),
+
   createDirectory: (parentPath: string[], name: string) =>
     ipcRenderer.invoke('dir:create', { parentPath, name }),
 
