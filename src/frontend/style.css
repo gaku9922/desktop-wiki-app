@@ -588,6 +588,15 @@ body.resizing-x .sidebar { transition: none; }
 
 /* 記事ページ: アクション（編集 + ⋯メニュー） */
 .article__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* 星・編集・⋯ の3ボタンを同じ高さに揃える */
+.article__actions .btn {
+  height: 32px;
+  padding: 0 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .kebab { position: relative; display: inline-block; }
 .kebab__btn { padding: 6px 12px; line-height: 1; }
 .kebab__menu {
@@ -625,3 +634,25 @@ body.resizing-x .sidebar { transition: none; }
 .search-box { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 .search-box__input { margin-top: 0; height: 32px; }
 .search-box__tag { padding: 6px 8px; font-size: 13px; }
+
+/* サイドバー: お気に入りセクション */
+.sidebar__favorites { flex-shrink: 0; border-bottom: 1px solid var(--border); max-height: 30vh; display: flex; flex-direction: column; }
+.favorites-list { overflow-y: auto; padding: 2px 8px 8px; }
+.placeholder--sm { padding: 4px 8px; font-size: 12px; }
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+}
+.fav-row:hover { background: var(--surface-sunken); }
+.fav-row__icon { color: #e0a72c; flex-shrink: 0; font-size: 12px; }
+.fav-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 記事ページ: 星ボタン */
+.star-btn { padding: 6px 12px; line-height: 1; font-size: 15px; color: var(--text-muted); }
+.star-btn--on { color: #e0a72c; border-color: #e6c073; }
+.star-btn:hover { border-color: var(--border-strong); }

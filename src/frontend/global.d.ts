@@ -5,6 +5,7 @@ import type {
   FileAPI,
   UserAPI,
   ArticleAPI,
+  FavoriteAPI,
   TreeNode as SharedTreeNode,
   WikiTreeNode as SharedWikiTreeNode,
   WikiCategoryNode as SharedWikiCategoryNode,
@@ -28,6 +29,7 @@ declare global {
     fileAPI: FileAPI;
     userAPI: UserAPI;
     articleAPI: ArticleAPI;
+    favAPI: FavoriteAPI;
   }
 
   type TreeNode = SharedTreeNode;

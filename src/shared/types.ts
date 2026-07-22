@@ -340,3 +340,22 @@ export interface DeleteArticlePayload {
 export interface SearchPayload {
   query: string;
 }
+
+// ================================================================== //
+//  お気に入り（端末ローカルのユーザーごと）
+// ================================================================== //
+export interface ToggleFavoriteResult {
+  favorited: boolean; // トグル後の状態
+  ids: string[]; // 更新後のお気に入りID一覧
+}
+
+export interface FavoriteAPI {
+  // 存在検証（プルーニング）込みで有効なお気に入りIDを返す
+  list(): Promise<string[]>;
+  // 登録・解除を切り替え、更新後の状態を返す
+  toggle(id: string): Promise<ToggleFavoriteResult>;
+}
+
+export interface ToggleFavoritePayload {
+  id: string;
+}

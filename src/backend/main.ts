@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import FileManager from './fileManager';
 import ArticleManager from './articleManager';
 import SkillMatrix from './skillMatrix';
+import FavoritesManager from './favoritesManager';
 import type {
   ArticleGetPayload,
   AttachDownloadPayload,
@@ -17,6 +18,7 @@ import type {
   DeleteArticlePayload,
   DeleteArticleResult,
   SearchPayload,
+  ToggleFavoritePayload,
   DeletePayload,
   DownloadPayload,
   OpenLinkPayload,
@@ -67,6 +69,7 @@ const registerIpcHandlers = (
   userFm: FileManager,
   am: ArticleManager,
   matrix: SkillMatrix,
+  favorites: FavoritesManager,
 ): void => {
   // ROOT_DIR のパスを返す
   ipcMain.handle('fs:getRootDir', () => ROOT_DIR);
@@ -111,6 +114,12 @@ const registerIpcHandlers = (
   // キーワード検索（タイトル＋本文）
   ipcMain.handle('article:search', (_event, { query }: SearchPayload) =>
     am.search(query),
+  );
+
+  // お気に入り: 一覧（存在検証込み）/ トグル
+  ipcMain.handle('fav:list', () => favorites.list());
+  ipcMain.handle('fav:toggle', (_event, { id }: ToggleFavoritePayload) =>
+    favorites.toggle(id),
   );
 
   // ------------------------------------------------------------------ //
@@ -360,7 +369,9 @@ app.whenReady().then(() => {
     path.join(app.getAppPath(), 'matrix', 'uchu_skill_business_map.csv'),
   );
   const am = new ArticleManager(ROOT_DIR, matrix);
-  registerIpcHandlers(fm, userFm, am, matrix);
+  // お気に入りは userData にユーザーごとに保存する
+  const favorites = new FavoritesManager(userFm, am);
+  registerIpcHandlers(fm, userFm, am, matrix, favorites);
   createWindow();
 
   app.on('activate', () => {
