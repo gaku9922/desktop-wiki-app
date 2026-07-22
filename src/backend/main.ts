@@ -16,6 +16,7 @@ import type {
   UpdateArticleResult,
   DeleteArticlePayload,
   DeleteArticleResult,
+  SearchPayload,
   DeletePayload,
   DownloadPayload,
   OpenLinkPayload,
@@ -106,6 +107,11 @@ const registerIpcHandlers = (
   ipcMain.handle('article:refresh', () => {
     am.invalidate();
   });
+
+  // キーワード検索（タイトル＋本文）
+  ipcMain.handle('article:search', (_event, { query }: SearchPayload) =>
+    am.search(query),
+  );
 
   // ------------------------------------------------------------------ //
   //  添付ダウンロード: file はコピー、folder はそのまま再帰コピー

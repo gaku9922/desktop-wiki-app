@@ -301,6 +301,8 @@ export interface ArticleAPI {
   createArticle(input: CreateArticleInput): Promise<CreateArticleResult>;
   updateArticle(input: UpdateArticleInput): Promise<UpdateArticleResult>;
   deleteArticle(id: string): Promise<DeleteArticleResult>;
+  // キーワード検索（タイトル＋本文）。一致した記事サマリを返す
+  search(query: string): Promise<ArticleSummary[]>;
   createDirectory(
     parentPath: string[],
     name: string,
@@ -333,4 +335,8 @@ export interface CreateDirectoryPayload {
 
 export interface DeleteArticlePayload {
   id: string;
+}
+
+export interface SearchPayload {
+  query: string;
 }

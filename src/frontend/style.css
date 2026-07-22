@@ -602,3 +602,9 @@ button { font-family: inherit; }
 .kebab__item:hover { background: var(--surface-sunken); }
 .kebab__item--danger { color: var(--danger); }
 .kebab__item--danger:hover { background: var(--danger-light); }
+
+/* サイドバー: 検索セクション */
+.sidebar__search { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.search-box { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.search-box__input { margin-top: 0; height: 32px; }
+.search-box__tag { padding: 6px 8px; font-size: 13px; }

@@ -19,6 +19,8 @@ const refreshBtn = document.getElementById('refreshBtn')!;
 const sidebarToggle = document.getElementById('sidebarToggle')!;
 const layoutEl = document.getElementById('layout')!;
 const homeLink = document.getElementById('homeLink')!;
+const searchKeyword = document.getElementById('searchKeyword') as HTMLInputElement;
+const searchTag = document.getElementById('searchTag') as HTMLSelectElement;
 
 // ユーザー関連 DOM
 const userBadge = document.getElementById('userBadge') as HTMLButtonElement;
@@ -106,6 +108,7 @@ async function refreshAll(): Promise<void> {
     await window.articleAPI.refresh();
     await loadIndex();
     renderSidebar();
+    populateSearchControls();
     render();
     showToast('最新の状態に更新しました');
   } catch (err) {
@@ -238,7 +241,8 @@ type Route =
   | { type: 'article'; id: string }
   | { type: 'category'; path: string[] }
   | { type: 'new'; path: string[] }
-  | { type: 'edit'; id: string };
+  | { type: 'edit'; id: string }
+  | { type: 'search'; mode: 'kw' | 'tag'; term: string };
 
 function parseRoute(): Route {
   const h = location.hash;
@@ -250,6 +254,8 @@ function parseRoute(): Route {
   if (mn) return { type: 'new', path: mn[1] ? mn[1].split('/').map(decodeURIComponent) : [] };
   const me = /^#\/edit\/(.+)$/.exec(h);
   if (me) return { type: 'edit', id: decodeURIComponent(me[1]) };
+  const msr = /^#\/search\/(kw|tag)\/(.+)$/.exec(h);
+  if (msr) return { type: 'search', mode: msr[1] as 'kw' | 'tag', term: decodeURIComponent(msr[2]) };
   return { type: 'top' };
 }
 
@@ -270,6 +276,10 @@ function editHash(id: string): string {
   return '#/edit/' + encodeURIComponent(id);
 }
 
+function searchHash(mode: 'kw' | 'tag', term: string): string {
+  return `#/search/${mode}/${encodeURIComponent(term)}`;
+}
+
 function newArticleButton(targetPath: string[]): HTMLElement {
   const btn = el('button', { class: 'btn btn--primary', text: '＋ 新規記事作成' });
   btn.addEventListener('click', () => navigate(newHash(targetPath)));
@@ -282,6 +292,7 @@ function render(): void {
   else if (route.type === 'category') renderCategory(route.path);
   else if (route.type === 'new') renderNew(route.path);
   else if (route.type === 'edit') renderEdit(route.id);
+  else if (route.type === 'search') renderSearch(route.mode, route.term);
   else renderTop();
   updateSidebarActive();
 }
@@ -320,6 +331,64 @@ function renderTop(): void {
   }
 
   viewEl.appendChild(page);
+}
+
+// ------------------------------------------------------------------ //
+//  検索結果ページ
+// ------------------------------------------------------------------ //
+async function renderSearch(mode: 'kw' | 'tag', term: string): Promise<void> {
+  viewEl.innerHTML = '';
+  viewEl.appendChild(el('p', { class: 'placeholder', text: '検索中…' }));
+
+  let results: ArticleSummary[];
+  let label: string;
+  if (mode === 'kw') {
+    try {
+      results = await window.articleAPI.search(term);
+    } catch (err) {
+      viewEl.innerHTML = '';
+      viewEl.appendChild(el('p', { class: 'placeholder error', text: `検索失敗: ${errorMessage(err)}` }));
+      return;
+    }
+    // 検索中にルートが変わっていたら破棄
+    const r = parseRoute();
+    if (r.type !== 'search' || r.mode !== 'kw' || r.term !== term) return;
+    label = `キーワード「${term}」`;
+  } else {
+    results = articleIndex
+      .filter((s) => s.tags.includes(term))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    label = `タグ「${term}」`;
+  }
+
+  viewEl.innerHTML = '';
+  const page = el('div', { class: 'page page--search' });
+  page.appendChild(el('h1', { class: 'top__title', text: '検索結果' }));
+  page.appendChild(
+    el('div', { class: 'section-head' }, [
+      el('span', { class: 'section-title', text: label }),
+      el('span', { class: 'section-sub', text: `${results.length} 件` }),
+    ]),
+  );
+  if (results.length === 0) {
+    page.appendChild(el('p', { class: 'placeholder', text: '該当する記事がありません。' }));
+  } else {
+    const list = el('ul', { class: 'latest-list' });
+    for (const s of results) list.appendChild(latestRow(s));
+    page.appendChild(list);
+  }
+  viewEl.appendChild(page);
+}
+
+//  タグ検索プルダウンを全タグで埋める（選択状態は保持）
+function populateSearchControls(): void {
+  const current = searchTag.value;
+  searchTag.innerHTML = '';
+  searchTag.appendChild(el('option', { text: 'タグで検索…', attrs: { value: '' } }));
+  for (const t of allTags()) {
+    searchTag.appendChild(el('option', { text: t, attrs: { value: t } }));
+  }
+  searchTag.value = current;
 }
 
 function latestRow(s: ArticleSummary): HTMLLIElement {
@@ -494,6 +563,7 @@ function openFolderCreateModal(parentPath: string[]): void {
         await window.articleAPI.refresh();
         await loadIndex();
         renderSidebar();
+        populateSearchControls();
         render();
         showToast('フォルダを作成しました');
       } else {
@@ -758,6 +828,7 @@ function buildForm(init: FormInit): void {
         await window.articleAPI.refresh();
         await loadIndex();
         renderSidebar();
+        populateSearchControls();
         showToast(`記事を${verb}しました`);
         navigate(`#/article/${result.id}`);
       } else {
@@ -1249,6 +1320,7 @@ function articleMenu(detail: ArticleDetail): HTMLElement {
             await window.articleAPI.refresh();
             await loadIndex();
             renderSidebar();
+            populateSearchControls();
             showToast('記事を削除しました');
             navigate(detail.categoryPath.length ? categoryHash(detail.categoryPath) : '#/');
           } else {
@@ -1553,6 +1625,19 @@ homeLink.addEventListener('click', () => navigate('#/'));
 sidebarToggle.addEventListener('click', () => layoutEl.classList.toggle('layout--sidebar-hidden'));
 window.addEventListener('hashchange', render);
 
+// キーワード検索: Enter で実行
+searchKeyword.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const q = searchKeyword.value.trim();
+    if (q) navigate(searchHash('kw', q));
+  }
+});
+// タグ検索: 選択で実行
+searchTag.addEventListener('change', () => {
+  const t = searchTag.value;
+  if (t) navigate(searchHash('tag', t));
+});
+
 (async () => {
   try {
     const rootDir = await window.fileAPI.getRootDir();
@@ -1564,6 +1649,7 @@ window.addEventListener('hashchange', render);
   try {
     await loadIndex();
     renderSidebar();
+    populateSearchControls();
     render();
   } catch (err) {
     treeEl.innerHTML = '';

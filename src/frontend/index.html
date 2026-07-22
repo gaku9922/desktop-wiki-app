@@ -19,8 +19,20 @@
 
   <div class="layout" id="layout">
 
-    <!-- ===== 左: サイドバー（Wikiツリー） ===== -->
+    <!-- ===== 左: サイドバー（検索 + Wikiツリー） ===== -->
     <aside class="sidebar" id="sidebar">
+      <div class="sidebar__search">
+        <div class="sidebar__header">
+          <span class="sidebar__title">検索</span>
+        </div>
+        <div class="search-box">
+          <input class="form-input search-box__input" type="search" id="searchKeyword"
+                 placeholder="キーワード（タイトル・本文）">
+          <select class="form-select search-box__tag" id="searchTag">
+            <option value="">タグで検索…</option>
+          </select>
+        </div>
+      </div>
       <div class="sidebar__header">
         <span class="sidebar__title">Wikiツリー</span>
         <button class="icon-btn" id="refreshBtn" title="更新">↺</button>
