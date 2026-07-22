@@ -21,6 +21,8 @@ const layoutEl = document.getElementById('layout')!;
 const homeLink = document.getElementById('homeLink')!;
 const searchKeyword = document.getElementById('searchKeyword') as HTMLInputElement;
 const searchTag = document.getElementById('searchTag') as HTMLSelectElement;
+const sidebarEl = document.getElementById('sidebar')!;
+const sidebarResizer = document.getElementById('sidebarResizer')!;
 
 // ユーザー関連 DOM
 const userBadge = document.getElementById('userBadge') as HTMLButtonElement;
@@ -1636,6 +1638,49 @@ searchKeyword.addEventListener('keydown', (e) => {
 searchTag.addEventListener('change', () => {
   const t = searchTag.value;
   if (t) navigate(searchHash('tag', t));
+});
+
+// ------------------------------------------------------------------ //
+//  サイドバー幅のリサイズ（右端ドラッグ、幅は localStorage に保存）
+// ------------------------------------------------------------------ //
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 560;
+const SIDEBAR_WIDTH_KEY = 'sidebarWidth';
+
+function setSidebarWidth(px: number): void {
+  const w = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(px)));
+  document.documentElement.style.setProperty('--sidebar-w', `${w}px`);
+}
+
+// 保存済みの幅を復元
+try {
+  const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '', 10);
+  if (!Number.isNaN(saved)) setSidebarWidth(saved);
+} catch {
+  /* localStorage 不可でも無視 */
+}
+
+sidebarResizer.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  document.body.classList.add('resizing-x');
+  const onMove = (ev: MouseEvent): void => {
+    setSidebarWidth(ev.clientX - sidebarEl.getBoundingClientRect().left);
+  };
+  const onUp = (): void => {
+    document.body.classList.remove('resizing-x');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    try {
+      const w = getComputedStyle(document.documentElement)
+        .getPropertyValue('--sidebar-w')
+        .trim();
+      if (w) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(parseInt(w, 10)));
+    } catch {
+      /* 保存失敗は無視 */
+    }
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 });
 
 (async () => {
