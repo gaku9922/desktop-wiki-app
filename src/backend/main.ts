@@ -8,10 +8,16 @@ import type {
   ArticleGetPayload,
   AttachDownloadPayload,
   AttachDownloadResult,
+  CreateArticleInput,
+  CreateArticleResult,
+  CreateDirectoryPayload,
+  CreateDirectoryResult,
   DeletePayload,
   DownloadPayload,
   OpenLinkPayload,
   OpenLinkResult,
+  PickPathPayload,
+  PickedPath,
   ReadPayload,
   SaveUserPayload,
   UploadPayload,
@@ -55,6 +61,7 @@ const registerIpcHandlers = (
   fm: FileManager,
   userFm: FileManager,
   am: ArticleManager,
+  matrix: SkillMatrix,
 ): void => {
   // ROOT_DIR のパスを返す
   ipcMain.handle('fs:getRootDir', () => ROOT_DIR);
@@ -170,6 +177,69 @@ const registerIpcHandlers = (
   );
 
   // ------------------------------------------------------------------ //
+  //  スキル/業務のプルダウン候補
+  // ------------------------------------------------------------------ //
+  ipcMain.handle('matrix:options', () => matrix.options());
+
+  // ------------------------------------------------------------------ //
+  //  パス選択ダイアログ（コピーはしない。アップロード方式のステージング用）
+  //  mode で「ファイル」または「フォルダ」を選ばせる（Windowsの同時選択制約を回避）
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'dialog:pickPath',
+    async (_event, { mode }: PickPathPayload): Promise<PickedPath | null> => {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: [mode === 'folder' ? 'openDirectory' : 'openFile'],
+      });
+      if (canceled || filePaths.length === 0) return null;
+      const p = filePaths[0];
+      return { path: p, kind: mode, name: path.basename(p) };
+    },
+  );
+
+  // ------------------------------------------------------------------ //
+  //  新規記事作成。作成者名は userData の user.json を正とする
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'article:create',
+    async (_event, input: CreateArticleInput): Promise<CreateArticleResult> => {
+      try {
+        let userName = '';
+        try {
+          userName = (userFm.readJson(USER_FILE) as UserConfig).name;
+        } catch {
+          userName = '';
+        }
+        const id = await am.createArticle(input, userName);
+        return { status: 'ok', id };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------ //
+  //  新規ディレクトリ作成（親ディレクトリ配下）
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'dir:create',
+    (_event, { parentPath, name }: CreateDirectoryPayload): CreateDirectoryResult => {
+      try {
+        am.createDirectory(parentPath, name);
+        return { status: 'ok' };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------ //
   //  ダウンロード: ネイティブの「名前を付けて保存」ダイアログを開く
   // ------------------------------------------------------------------ //
   ipcMain.handle('fs:download', async (
@@ -238,7 +308,7 @@ app.whenReady().then(() => {
     path.join(app.getAppPath(), 'matrix', 'uchu_skill_business_map.csv'),
   );
   const am = new ArticleManager(ROOT_DIR, matrix);
-  registerIpcHandlers(fm, userFm, am);
+  registerIpcHandlers(fm, userFm, am, matrix);
   createWindow();
 
   app.on('activate', () => {

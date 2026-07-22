@@ -50,6 +50,16 @@ const articleAPI: ArticleAPI = {
   openLink: (articleId: string, attachmentIndex: number) =>
     ipcRenderer.invoke('link:open', { articleId, attachmentIndex }),
 
+  matrixOptions: () => ipcRenderer.invoke('matrix:options'),
+
+  pickPath: (mode: 'file' | 'folder') =>
+    ipcRenderer.invoke('dialog:pickPath', { mode }),
+
+  createArticle: (input) => ipcRenderer.invoke('article:create', input),
+
+  createDirectory: (parentPath: string[], name: string) =>
+    ipcRenderer.invoke('dir:create', { parentPath, name }),
+
   refresh: () => ipcRenderer.invoke('article:refresh'),
 };
 

@@ -37,6 +37,8 @@ const userSaveBtn = document.getElementById('userSaveBtn') as HTMLButtonElement;
 let wikiTree: WikiTreeNode[] = [];
 let articleIndex: ArticleSummary[] = [];
 const summaryById = new Map<string, ArticleSummary>();
+let matrixOptions: MatrixOptions | null = null;
+let currentUserName = '';
 
 // ------------------------------------------------------------------ //
 //  ユーティリティ
@@ -150,7 +152,7 @@ function buildTreeList(nodes: WikiTreeNode[], depth: number): HTMLUListElement {
         const closed = li.classList.toggle('tree__item--closed');
         toggle.textContent = closed ? '▸' : '▾';
       };
-      // シェブロン = 開閉、ラベル（行本体）= ディレクトリページへ遷移
+      // シェブロン = 開閉、ラベル（行本体）= フォルダページへ遷移
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleOpen();
@@ -234,7 +236,8 @@ function cssEscape(s: string): string {
 type Route =
   | { type: 'top' }
   | { type: 'article'; id: string }
-  | { type: 'category'; path: string[] };
+  | { type: 'category'; path: string[] }
+  | { type: 'new'; path: string[] };
 
 function parseRoute(): Route {
   const h = location.hash;
@@ -242,6 +245,8 @@ function parseRoute(): Route {
   if (ma) return { type: 'article', id: decodeURIComponent(ma[1]) };
   const mc = /^#\/category\/(.+)$/.exec(h);
   if (mc) return { type: 'category', path: mc[1].split('/').map(decodeURIComponent) };
+  const mn = /^#\/new(?:\/(.+))?$/.exec(h);
+  if (mn) return { type: 'new', path: mn[1] ? mn[1].split('/').map(decodeURIComponent) : [] };
   return { type: 'top' };
 }
 
@@ -254,10 +259,21 @@ function categoryHash(path: string[]): string {
   return '#/category/' + path.map(encodeURIComponent).join('/');
 }
 
+function newHash(path: string[]): string {
+  return '#/new' + (path.length ? '/' + path.map(encodeURIComponent).join('/') : '');
+}
+
+function newArticleButton(targetPath: string[]): HTMLElement {
+  const btn = el('button', { class: 'btn btn--primary', text: '＋ 新規記事作成' });
+  btn.addEventListener('click', () => navigate(newHash(targetPath)));
+  return btn;
+}
+
 function render(): void {
   const route = parseRoute();
   if (route.type === 'article') renderArticle(route.id);
   else if (route.type === 'category') renderCategory(route.path);
+  else if (route.type === 'new') renderNew(route.path);
   else renderTop();
   updateSidebarActive();
 }
@@ -269,7 +285,11 @@ function renderTop(): void {
   viewEl.innerHTML = '';
   const page = el('div', { class: 'page page--top' });
 
-  page.appendChild(el('h1', { class: 'top__title', text: '社内Wiki' }));
+  const head = el('div', { class: 'page__toolbar' }, [
+    el('h1', { class: 'top__title', text: '社内Wiki' }),
+    newArticleButton([]),
+  ]);
+  page.appendChild(head);
   page.appendChild(el('p', { class: 'top__desc', text: WIKI_DESCRIPTION }));
 
   const latest = [...articleIndex]
@@ -348,7 +368,7 @@ function breadcrumb(path: string[], opts: { lastIsLink: boolean }): HTMLElement 
 }
 
 // ------------------------------------------------------------------ //
-//  ディレクトリ（カテゴリ）閲覧ページ
+//  フォルダ（カテゴリ）閲覧ページ
 // ------------------------------------------------------------------ //
 function findCategory(path: string[]): WikiCategoryNode | null {
   let nodes: WikiTreeNode[] = wikiTree;
@@ -371,13 +391,18 @@ function renderCategory(path: string[]): void {
   page.appendChild(breadcrumb(path, { lastIsLink: false }));
 
   if (!node) {
-    page.appendChild(el('h1', { class: 'article__title', text: 'ディレクトリが見つかりません' }));
+    page.appendChild(el('h1', { class: 'article__title', text: 'フォルダが見つかりません' }));
     page.appendChild(el('p', { class: 'placeholder', text: `「${path.join('/')}」は存在しません。` }));
     viewEl.appendChild(page);
     return;
   }
 
-  page.appendChild(el('h1', { class: 'cat__title', text: node.name }));
+  page.appendChild(
+    el('div', { class: 'page__toolbar' }, [
+      el('h1', { class: 'cat__title', text: node.name }),
+      el('div', { class: 'toolbar-actions' }, [folderCreateButton(path), newArticleButton(path)]),
+    ]),
+  );
 
   const childCategories = node.children.filter(
     (n): n is WikiCategoryNode => n.type === 'category',
@@ -387,10 +412,10 @@ function renderCategory(path: string[]): void {
     .filter((s) => s.categoryPath.join('/') === targetKey)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  // ---- 子ディレクトリと子記事を同一リストに（エクスプローラ風）----
-  //  並び順: ディレクトリが先、その後に記事
+  // ---- 子フォルダと子記事を同一リストに（エクスプローラ風）----
+  //  並び順: フォルダが先、その後に記事
   if (childCategories.length === 0 && childArticles.length === 0) {
-    page.append(el('p', { class: 'placeholder', text: '空のディレクトリです' }));
+    page.append(el('p', { class: 'placeholder', text: '空のフォルダです' }));
     viewEl.appendChild(page);
     return;
   }
@@ -403,7 +428,7 @@ function renderCategory(path: string[]): void {
   viewEl.appendChild(page);
 }
 
-//  ディレクトリ行（フォルダアイコン + 名前 + 記事数）。記事行と同じ一覧に並ぶ
+//  フォルダ行（フォルダアイコン + 名前 + 記事数）。記事行と同じ一覧に並ぶ
 function dirRow(c: WikiCategoryNode): HTMLLIElement {
   const li = el('li', { class: 'latest-item latest-item--dir' });
   const left = el('span', { class: 'dir-row__left' }, [
@@ -414,6 +439,580 @@ function dirRow(c: WikiCategoryNode): HTMLLIElement {
   li.append(left, count);
   li.addEventListener('click', () => navigate(categoryHash(c.path)));
   return li;
+}
+
+//  「＋ 新規フォルダ作成」ボタン。押下でフォルダ名入力ポップアップを開く
+function folderCreateButton(parentPath: string[]): HTMLElement {
+  const btn = el('button', { class: 'btn', text: '＋ 新規フォルダ作成' });
+  btn.addEventListener('click', () => openFolderCreateModal(parentPath));
+  return btn;
+}
+
+//  フォルダ名入力のポップアップ（モーダル）
+function openFolderCreateModal(parentPath: string[]): void {
+  const input = document.createElement('input');
+  input.className = 'form-input';
+  input.placeholder = 'フォルダ名';
+  const err = el('p', { class: 'editor-error' });
+  const cancel = el('button', { class: 'btn', text: 'キャンセル' });
+  const create = el('button', { class: 'btn btn--primary', text: '作成' });
+
+  const overlay = el('div', { class: 'modal-overlay' }, [
+    el('div', { class: 'modal-card' }, [
+      el('h2', { class: 'modal-title', text: '新規フォルダ作成' }),
+      el('p', {
+        class: 'modal-desc',
+        text: `「${parentPath.join(' / ') || 'ルート'}」の直下に作成します。`,
+      }),
+      el('label', { class: 'form-label' }, ['フォルダ名', input]),
+      err,
+      el('div', { class: 'modal-actions' }, [cancel, create]),
+    ]),
+  ]);
+
+  const close = (): void => overlay.remove();
+  const submit = async (): Promise<void> => {
+    err.textContent = '';
+    const name = input.value.trim();
+    if (!name) {
+      err.textContent = 'フォルダ名を入力してください。';
+      return;
+    }
+    create.setAttribute('disabled', 'true');
+    try {
+      const result = await window.articleAPI.createDirectory(parentPath, name);
+      if (result.status === 'ok') {
+        close();
+        await window.articleAPI.refresh();
+        await loadIndex();
+        renderSidebar();
+        render();
+        showToast('フォルダを作成しました');
+      } else {
+        err.textContent = result.message;
+        create.removeAttribute('disabled');
+      }
+    } catch (e) {
+      err.textContent = errorMessage(e);
+      create.removeAttribute('disabled');
+    }
+  };
+  cancel.addEventListener('click', close);
+  create.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+    else if (e.key === 'Escape') close();
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+
+  document.body.appendChild(overlay);
+  input.focus();
+}
+
+// ================================================================== //
+//  新規記事作成ページ
+// ================================================================== //
+function flattenCategories(
+  nodes: WikiTreeNode[],
+  acc: { path: string[]; label: string }[] = [],
+): { path: string[]; label: string }[] {
+  for (const n of nodes) {
+    if (n.type === 'category') {
+      acc.push({ path: n.path, label: n.path.join(' / ') });
+      flattenCategories(n.children, acc);
+    }
+  }
+  return acc;
+}
+
+function allTags(): string[] {
+  const s = new Set<string>();
+  for (const a of articleIndex) for (const t of a.tags) s.add(t);
+  return [...s].sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+//  絶対パスの拡張子有無から file/folder を推定（フォーム側の初期値）
+function guessPathType(raw: string): 'file' | 'folder' {
+  let s = raw.trim();
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
+  s = s.trim();
+  const parts = s.split(/[/\\]+/).filter(Boolean);
+  const base = parts.length ? parts[parts.length - 1] : s;
+  const dot = base.lastIndexOf('.');
+  return dot > 0 && dot < base.length - 1 ? 'file' : 'folder';
+}
+
+async function renderNew(initialPath: string[]): Promise<void> {
+  viewEl.innerHTML = '';
+  viewEl.appendChild(el('p', { class: 'placeholder', text: '読み込み中…' }));
+  if (!matrixOptions) {
+    try {
+      matrixOptions = await window.articleAPI.matrixOptions();
+    } catch {
+      matrixOptions = { skills: [], business: [] };
+    }
+  }
+  if (parseRoute().type !== 'new') return;
+  viewEl.innerHTML = '';
+
+  const page = el('div', { class: 'page page--form' });
+  page.appendChild(el('h1', { class: 'article__title', text: '新規記事作成' }));
+
+  // ---- 配置先フォルダ ----
+  const cats = flattenCategories(wikiTree);
+  const dirSelect = document.createElement('select');
+  dirSelect.className = 'form-select';
+  dirSelect.appendChild(el('option', { text: 'ルート（wiki 直下）', attrs: { value: '' } }));
+  for (const c of cats) {
+    dirSelect.appendChild(el('option', { text: c.label, attrs: { value: c.path.join('/') } }));
+  }
+  dirSelect.value = initialPath.join('/');
+  page.appendChild(
+    field('配置先フォルダ', [
+      dirSelect,
+      el('div', { class: 'field__hint', text: '既存フォルダから選択してください（新規フォルダはフォルダページから作成できます）。' }),
+    ]),
+  );
+
+  // ---- 作成者・匿名 ----
+  const anon = document.createElement('input');
+  anon.type = 'checkbox';
+  const authorLabel = el('span', { class: 'author-name', text: currentUserName || '(未登録)' });
+  const updateAuthor = (): void => {
+    authorLabel.textContent = anon.checked ? '匿名' : currentUserName || '(未登録)';
+  };
+  anon.addEventListener('change', updateAuthor);
+  const anonLabel = el('label', { class: 'checkbox' }, [anon, document.createTextNode(' 匿名で作成する')]);
+  page.appendChild(
+    field('作成者 / 最終更新者', [
+      el('div', { class: 'author-line' }, [authorLabel, anonLabel]),
+      el('div', { class: 'field__hint', text: '作成時は最終更新者も作成者と同じになります。' }),
+    ]),
+  );
+
+  // ---- タイトル ----
+  const titleInput = document.createElement('input');
+  titleInput.className = 'form-input';
+  titleInput.placeholder = '記事タイトル';
+  page.appendChild(field('タイトル（必須）', [titleInput]));
+
+  // ---- 本文 ----
+  const bodyInput = document.createElement('textarea');
+  bodyInput.className = 'form-textarea';
+  bodyInput.rows = 10;
+  bodyInput.placeholder = '本文（プレーンテキスト。1文字以上必須）';
+  page.appendChild(field('本文（必須）', [bodyInput]));
+
+  // ---- タグ ----
+  const selectedTags: string[] = [];
+  page.appendChild(tagField(selectedTags));
+
+  // ---- スキル / 業務 ----
+  const selectedSkill: string[] = [];
+  const selectedBusiness: string[] = [];
+  page.appendChild(multiSelectField('スキル（skill）', matrixOptions.skills, selectedSkill));
+  page.appendChild(multiSelectField('業務（business）', matrixOptions.business, selectedBusiness));
+
+  // ---- 添付（追加済みは一覧に残る。複数・任意の組み合わせ可）----
+  const attachments: CreateAttachmentInput[] = [];
+  page.appendChild(attachmentsField(attachments));
+
+  // ---- 送信 ----
+  const errorEl = el('p', { class: 'editor-error' });
+  const submit = el('button', { class: 'btn btn--primary', text: '作成' });
+  const cancel = el('button', { class: 'btn', text: 'キャンセル' });
+  cancel.addEventListener('click', () =>
+    navigate(initialPath.length ? categoryHash(initialPath) : '#/'),
+  );
+  submit.addEventListener('click', async () => {
+    errorEl.textContent = '';
+    const selectedDir = dirSelect.value ? dirSelect.value.split('/') : [];
+    const input: CreateArticleInput = {
+      categoryPath: selectedDir,
+      title: titleInput.value.trim(),
+      body: bodyInput.value,
+      anonymous: anon.checked,
+      tags: selectedTags,
+      skill: selectedSkill,
+      business: selectedBusiness,
+      attachments,
+    };
+    if (!input.title) {
+      errorEl.textContent = 'タイトルを入力してください。';
+      return;
+    }
+    if (!input.body.trim()) {
+      errorEl.textContent = '本文を入力してください（1文字以上）。';
+      return;
+    }
+    submit.setAttribute('disabled', 'true');
+    try {
+      const result = await window.articleAPI.createArticle(input);
+      if (result.status === 'ok') {
+        await loadIndex();
+        renderSidebar();
+        showToast('記事を作成しました');
+        navigate(`#/article/${result.id}`);
+      } else {
+        errorEl.textContent = `作成失敗: ${result.message}`;
+        submit.removeAttribute('disabled');
+      }
+    } catch (err) {
+      errorEl.textContent = `作成失敗: ${errorMessage(err)}`;
+      submit.removeAttribute('disabled');
+    }
+  });
+  page.appendChild(errorEl);
+  page.appendChild(el('div', { class: 'form-actions' }, [cancel, submit]));
+
+  viewEl.appendChild(page);
+}
+
+//  フォームの1フィールド（ラベル＋中身）
+function field(labelText: string, children: (Node | string)[]): HTMLElement {
+  return el('div', { class: 'field' }, [
+    el('label', { class: 'field__label', text: labelText }),
+    ...children,
+  ]);
+}
+
+function tagField(selected: string[]): HTMLElement {
+  const chips = el('div', { class: 'chips' });
+  const input = document.createElement('input');
+  input.className = 'form-input';
+  input.placeholder = 'タグを入力して Enter（既存タグはサジェスト）';
+  const dl = document.createElement('datalist');
+  dl.id = 'tag-suggest';
+  for (const t of allTags()) dl.appendChild(el('option', { attrs: { value: t } }));
+  input.setAttribute('list', 'tag-suggest');
+  const renderChips = (): void => {
+    chips.innerHTML = '';
+    for (const t of selected) chips.appendChild(removableChip(t, () => {
+      const i = selected.indexOf(t);
+      if (i >= 0) selected.splice(i, 1);
+      renderChips();
+    }));
+  };
+  const add = (): void => {
+    const v = input.value.trim();
+    if (v && !selected.includes(v)) {
+      selected.push(v);
+      renderChips();
+    }
+    input.value = '';
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      add();
+    }
+  });
+  return field('タグ', [input, dl, chips]);
+}
+
+function multiSelectField(
+  labelText: string,
+  options: MatrixOption[],
+  selected: string[],
+): HTMLElement {
+  const sel = document.createElement('select');
+  sel.className = 'form-select';
+  fillMatrixSelect(sel, options);
+  const chips = el('div', { class: 'chips' });
+  const labelOf = (id: string): string => options.find((o) => o.id === id)?.label ?? id;
+  const renderChips = (): void => {
+    chips.innerHTML = '';
+    for (const id of selected) {
+      chips.appendChild(removableChip(`${id} ${labelOf(id)}`, () => {
+        const i = selected.indexOf(id);
+        if (i >= 0) selected.splice(i, 1);
+        renderChips();
+      }));
+    }
+  };
+  sel.addEventListener('change', () => {
+    const v = sel.value;
+    if (v && !selected.includes(v)) {
+      selected.push(v);
+      renderChips();
+    }
+    sel.value = '';
+  });
+  return field(labelText, [sel, chips]);
+}
+
+function fillMatrixSelect(sel: HTMLSelectElement, options: MatrixOption[]): void {
+  sel.appendChild(el('option', { text: '選択して追加…', attrs: { value: '' } }));
+  const groups = new Map<string, { label: string; items: MatrixOption[] }>();
+  for (const o of options) {
+    if (!groups.has(o.majorId)) groups.set(o.majorId, { label: o.majorLabel, items: [] });
+    groups.get(o.majorId)!.items.push(o);
+  }
+  for (const g of groups.values()) {
+    const og = document.createElement('optgroup');
+    og.label = g.label;
+    for (const o of g.items) {
+      og.appendChild(el('option', { text: `${o.id}  ${o.label}`, attrs: { value: o.id } }));
+    }
+    sel.appendChild(og);
+  }
+}
+
+function removableChip(text: string, onRemove: () => void): HTMLElement {
+  const chip = el('span', { class: 'chip-sel' }, [el('span', { text })]);
+  const x = el('button', { class: 'chip-sel__x', text: '×', title: '削除' });
+  x.addEventListener('click', onRemove);
+  chip.appendChild(x);
+  return chip;
+}
+
+// ---- 添付: 追加済み一覧 ＋ 追加エリア ----
+//  追加した添付は committed に蓄積され一覧に残る（方式プルダウンの変更に影響されない）。
+//  どの方式でも複数・任意の組み合わせで追加できる。
+function attachmentsField(committed: CreateAttachmentInput[]): HTMLElement {
+  const wrap = el('div', { class: 'field' });
+  wrap.appendChild(el('label', { class: 'field__label', text: '添付' }));
+
+  const list = el('div', { class: 'attach-list' });
+  const renderList = (): void => {
+    list.innerHTML = '';
+    if (committed.length === 0) {
+      list.appendChild(el('p', { class: 'field__hint', text: 'まだ添付はありません。' }));
+      return;
+    }
+    committed.forEach((att, i) => {
+      list.appendChild(
+        committedAttachRow(att, () => {
+          committed.splice(i, 1);
+          renderList();
+        }),
+      );
+    });
+  };
+
+  const adder = buildAttachAdder((att) => {
+    committed.push(att);
+    renderList();
+  });
+
+  wrap.append(list, adder);
+  renderList();
+  return wrap;
+}
+
+const ATTACH_BADGE: Record<CreateAttachmentInput['kind'], { text: string; cls: string }> = {
+  upload: { text: '記事内', cls: 'badge--in' },
+  fileServer: { text: 'サーバ参照', cls: 'badge--server' },
+  article: { text: '関連記事', cls: 'badge--article' },
+  link: { text: '外部リンク', cls: 'badge--link' },
+};
+
+//  追加済み添付の1行表示（削除可）
+function committedAttachRow(att: CreateAttachmentInput, onRemove: () => void): HTMLElement {
+  let icon = '📄';
+  let name = '';
+  if (att.kind === 'upload') {
+    icon = att.fileType === 'folder' ? '📁' : '📄';
+    name = att.name;
+  } else if (att.kind === 'fileServer') {
+    icon = att.fileType === 'folder' ? '📁' : '📄';
+    name = att.path;
+  } else if (att.kind === 'article') {
+    icon = '🔗';
+    const t = summaryById.get(att.id)?.title;
+    name = t ? `${t}（${att.id}）` : att.id;
+  } else {
+    icon = '🌐';
+    name = att.name || att.url;
+  }
+  const badge = ATTACH_BADGE[att.kind];
+  const row = el('div', { class: 'attach-row' }, [
+    el('span', { class: 'attach-row__icon', text: icon }),
+    el('span', { class: 'attach-row__name', text: name }),
+    el('span', { class: `badge ${badge.cls}`, text: badge.text }),
+  ]);
+  const x = el('button', { class: 'chip-sel__x', text: '×', title: '削除' });
+  x.addEventListener('click', onRemove);
+  row.append(x);
+  return row;
+}
+
+//  追加エリア（方式選択＋入力＋追加）。ここの操作は一覧の既存項目に影響しない
+function buildAttachAdder(onAdd: (att: CreateAttachmentInput) => void): HTMLElement {
+  const box = el('div', { class: 'attach-adder' });
+  const method = document.createElement('select');
+  method.className = 'form-select';
+  const methods: [CreateAttachmentInput['kind'], string][] = [
+    ['upload', 'ファイルアップロード'],
+    ['fileServer', 'ファイルサーバ絶対パス'],
+    ['article', '他記事'],
+    ['link', '外部リンク'],
+  ];
+  for (const [v, t] of methods) method.appendChild(el('option', { text: t, attrs: { value: v } }));
+
+  const detail = el('div', { class: 'attach-adder__detail' });
+  const rebuild = (): void => {
+    detail.innerHTML = '';
+    detail.appendChild(buildAdderDetail(method.value as CreateAttachmentInput['kind'], onAdd));
+  };
+  method.addEventListener('change', rebuild);
+
+  box.append(
+    el('div', { class: 'attach-adder__head' }, [
+      el('span', { class: 'field__hint', text: '添付を追加:' }),
+      method,
+    ]),
+    detail,
+  );
+  rebuild();
+  return box;
+}
+
+function buildAdderDetail(
+  kind: CreateAttachmentInput['kind'],
+  onAdd: (att: CreateAttachmentInput) => void,
+): HTMLElement {
+  const box = el('div');
+
+  if (kind === 'upload') {
+    const hint = el('span', { class: 'field__hint', text: 'ファイル / フォルダを選ぶとそのまま一覧に追加されます。' });
+    const pick = async (mode: 'file' | 'folder'): Promise<void> => {
+      const res = await window.articleAPI.pickPath(mode);
+      if (res) onAdd({ kind: 'upload', sourcePath: res.path, fileType: res.kind, name: res.name });
+    };
+    const fileBtn = el('button', { class: 'btn', text: 'ファイル選択して追加' });
+    fileBtn.addEventListener('click', () => pick('file'));
+    const folderBtn = el('button', { class: 'btn', text: 'フォルダ選択して追加' });
+    folderBtn.addEventListener('click', () => pick('folder'));
+    box.append(el('div', { class: 'row-inline' }, [fileBtn, folderBtn]), hint);
+    return box;
+  }
+
+  if (kind === 'fileServer') {
+    const pathInput = document.createElement('input');
+    pathInput.className = 'form-input';
+    pathInput.placeholder = '絶対パス（例: //bvd120/共有/資料.pdf）';
+    let fsType: 'file' | 'folder' = 'file';
+    let touched = false;
+    const fileRadio = radio('fsType-' + Math.random(), 'ファイル');
+    const folderRadio = radio(fileRadio.name, 'フォルダ');
+    const applyType = (t: 'file' | 'folder'): void => {
+      fsType = t;
+      fileRadio.input.checked = t === 'file';
+      folderRadio.input.checked = t === 'folder';
+    };
+    applyType('file');
+    pathInput.addEventListener('input', () => {
+      if (!touched) applyType(guessPathType(pathInput.value));
+    });
+    fileRadio.input.addEventListener('change', () => {
+      touched = true;
+      applyType('file');
+    });
+    folderRadio.input.addEventListener('change', () => {
+      touched = true;
+      applyType('folder');
+    });
+    const addBtn = el('button', { class: 'btn', text: '追加' });
+    addBtn.addEventListener('click', () => {
+      const v = pathInput.value.trim();
+      if (!v) {
+        showToast('パスを入力してください', 'warn');
+        return;
+      }
+      onAdd({ kind: 'fileServer', path: v, fileType: fsType });
+      pathInput.value = '';
+      touched = false;
+      applyType('file');
+    });
+    box.append(
+      pathInput,
+      el('div', { class: 'row-inline' }, [
+        el('span', { class: 'field__hint', text: '種別:' }),
+        fileRadio.label,
+        folderRadio.label,
+        addBtn,
+      ]),
+      el('div', { class: 'warn-text', text: '※ 参照先が移動・削除されるとリンク切れになります。ご注意ください。' }),
+    );
+    return box;
+  }
+
+  if (kind === 'article') {
+    const input = document.createElement('input');
+    input.className = 'form-input';
+    input.placeholder = '記事IDまたはタイトルで検索';
+    const dl = document.createElement('datalist');
+    dl.id = 'art-suggest-' + Math.random().toString(36).slice(2);
+    for (const s of articleIndex) {
+      dl.appendChild(el('option', { attrs: { value: `${s.id}  ${s.title}` } }));
+    }
+    input.setAttribute('list', dl.id);
+    const resolved = el('span', { class: 'field__hint' });
+    const currentId = (): string => {
+      const m = /(UGB\d+)/.exec(input.value);
+      return m ? m[1] : '';
+    };
+    const sync = (): void => {
+      const id = currentId();
+      const t = id ? summaryById.get(id)?.title : undefined;
+      resolved.textContent = id ? (t ? `→ ${t}` : '→ 該当記事が見つかりません') : '';
+    };
+    input.addEventListener('input', sync);
+    const addBtn = el('button', { class: 'btn', text: '追加' });
+    addBtn.addEventListener('click', () => {
+      const id = currentId();
+      if (!id || !summaryById.has(id)) {
+        showToast('有効な記事を選択してください', 'warn');
+        return;
+      }
+      onAdd({ kind: 'article', id });
+      input.value = '';
+      sync();
+    });
+    box.append(input, dl, el('div', { class: 'row-inline' }, [resolved, addBtn]));
+    return box;
+  }
+
+  // link
+  const url = document.createElement('input');
+  url.className = 'form-input';
+  url.placeholder = 'https://example.com/...';
+  const name = document.createElement('input');
+  name.className = 'form-input';
+  name.placeholder = '表示名（任意）';
+  const addBtn = el('button', { class: 'btn', text: '追加' });
+  addBtn.addEventListener('click', () => {
+    const u = url.value.trim();
+    if (!isHttpUrlFront(u)) {
+      showToast('http / https のURLを入力してください', 'warn');
+      return;
+    }
+    onAdd({ kind: 'link', url: u, name: name.value.trim() || undefined });
+    url.value = '';
+    name.value = '';
+  });
+  box.append(url, name, el('div', { class: 'row-inline' }, [addBtn]));
+  return box;
+}
+
+function isHttpUrlFront(u: string): boolean {
+  try {
+    const proto = new URL(u).protocol;
+    return proto === 'http:' || proto === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function radio(name: string, labelText: string): { input: HTMLInputElement; label: HTMLElement; name: string } {
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = name;
+  const label = el('label', { class: 'radio' }, [input, document.createTextNode(' ' + labelText)]);
+  return { input, label, name };
 }
 
 // ------------------------------------------------------------------ //
@@ -442,7 +1041,7 @@ async function renderArticle(id: string): Promise<void> {
   const a = detail.article;
   const page = el('div', { class: 'page page--article' });
 
-  // パンくず（各カテゴリはディレクトリページへのリンク）
+  // パンくず（各カテゴリはフォルダページへのリンク）
   page.appendChild(breadcrumb(detail.categoryPath, { lastIsLink: true }));
 
   page.appendChild(el('h1', { class: 'article__title', text: a.title }));
@@ -625,6 +1224,7 @@ async function onAttachmentClick(
 //  ユーザー登録 / 名前変更
 // ------------------------------------------------------------------ //
 function renderUserBadge(name: string): void {
+  currentUserName = name;
   userBadgeName.textContent = name;
   userBadge.hidden = false;
 }

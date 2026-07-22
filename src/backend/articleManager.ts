@@ -5,6 +5,7 @@ import type {
   ArticleDetail,
   ArticleSummary,
   AttachmentRef,
+  CreateArticleInput,
   FileAttachment,
   ResolvedAttachment,
   SkillLabel,
@@ -12,21 +13,25 @@ import type {
   WikiTreeNode,
 } from '../shared/types';
 import SkillMatrix from './skillMatrix';
+import {
+  articleAttachment,
+  buildArticleRecord,
+  fileServerAttachment,
+  inArticleDirAttachment,
+  isHttpUrl,
+  linkAttachment,
+  nowJstIso,
+  serializeArticleJson,
+  validateCreateInput,
+  validateDirName,
+} from './articleSchema';
 
 // 記事ディレクトリ名（UGB + 数字）
 const ARTICLE_DIR_RE = /^UGB\d+$/;
+const ID_PREFIX = 'UGB';
+const ID_PAD = 4;
 // 共有サーバ（外部）パスの存在確認タイムアウト。到達不能でUIを固めないため
 const EXTERNAL_TIMEOUT_MS = 2000;
-
-// 外部リンクは http / https のみ許可する
-function isHttpUrl(url: string): boolean {
-  try {
-    const proto = new URL(url).protocol;
-    return proto === 'http:' || proto === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 // ------------------------------------------------------------------ //
 //  パスの存在確認。外部（共有サーバ）はタイムアウト付き
@@ -360,5 +365,169 @@ export default class ArticleManager {
       force: true,
       errorOnExist: false,
     });
+  }
+
+  // ================================================================== //
+  //  新規記事作成
+  // ================================================================== //
+
+  //  既存の最大ID番号をファイルシステムから走査（インデックス陳腐化を避ける）
+  private maxExistingIdNum(): number {
+    let max = 0;
+    const walk = (dir: string): void => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        const m = /^UGB(\d+)$/.exec(e.name);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (n > max) max = n;
+        } else if (e.name !== 'attachments') {
+          walk(path.join(dir, e.name));
+        }
+      }
+    };
+    walk(this.rootDir);
+    return max;
+  }
+
+  private formatId(n: number): string {
+    return ID_PREFIX + String(n).padStart(ID_PAD, '0');
+  }
+
+  //  カテゴリディレクトリを作成（無ければ）して絶対パスを返す
+  private ensureCategoryDir(categoryPath: string[]): string {
+    const abs = path.join(this.rootDir, ...categoryPath);
+    fs.mkdirSync(abs, { recursive: true });
+    return abs;
+  }
+
+  //  記事ディレクトリを「衝突したら次ID」で排他的に確保する（共有サーバ対策）
+  private allocateArticleDir(categoryAbs: string): { id: string; dir: string } {
+    let n = this.maxExistingIdNum() + 1;
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const id = this.formatId(n);
+      const dir = path.join(categoryAbs, id);
+      try {
+        fs.mkdirSync(dir); // 既存なら EEXIST で例外 → 次IDへ
+        return { id, dir };
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+          n++;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('記事IDの採番に失敗しました。');
+  }
+
+  //  添付入力を解決して AttachmentRef[] を作る。uploadは attachments/ へコピー
+  private async buildAttachments(
+    input: CreateArticleInput,
+    articleDir: string,
+  ): Promise<AttachmentRef[]> {
+    const refs: AttachmentRef[] = [];
+    const attachDir = path.join(articleDir, 'attachments');
+    for (const att of input.attachments) {
+      switch (att.kind) {
+        case 'upload': {
+          fs.mkdirSync(attachDir, { recursive: true });
+          const dest = path.join(attachDir, att.name);
+          if (att.fileType === 'folder') {
+            await fs.promises.cp(att.sourcePath, dest, {
+              recursive: true,
+              force: true,
+              errorOnExist: false,
+            });
+          } else {
+            await fs.promises.copyFile(att.sourcePath, dest);
+          }
+          refs.push(
+            inArticleDirAttachment(att.name, att.fileType === 'folder', dest),
+          );
+          break;
+        }
+        case 'fileServer':
+          refs.push(fileServerAttachment(att.path, att.fileType === 'folder'));
+          break;
+        case 'article':
+          refs.push(articleAttachment(att.id));
+          break;
+        case 'link':
+          refs.push(linkAttachment(att.url, att.name));
+          break;
+      }
+    }
+    return refs;
+  }
+
+  //  新規記事の作成。成功で新IDを返す
+  async createArticle(
+    input: CreateArticleInput,
+    userName: string,
+  ): Promise<string> {
+    // スキーマ層で一括検証（スキル/業務/記事IDの妥当性を含む）
+    const err = validateCreateInput(input, {
+      validSkill: (id) => this.matrix.hasSkill(id),
+      validBusiness: (id) => this.matrix.hasBusiness(id),
+      validArticle: (id) => this.ensureIndex().byId.has(id),
+    });
+    if (err) throw new Error(err);
+
+    const categoryAbs = this.ensureCategoryDir(input.categoryPath);
+    const { id, dir } = this.allocateArticleDir(categoryAbs);
+
+    try {
+      const attachments = await this.buildAttachments(input, dir);
+      const now = nowJstIso();
+      const who = input.anonymous ? '匿名' : userName || '匿名';
+      const { json, markdown } = buildArticleRecord({
+        id,
+        title: input.title.trim(),
+        createdAt: now,
+        createdBy: who,
+        updatedAt: now,
+        updatedBy: who,
+        tags: input.tags,
+        skill: input.skill,
+        business: input.business,
+        attachments,
+        body: input.body,
+      });
+      fs.writeFileSync(path.join(dir, `${id}.json`), serializeArticleJson(json), 'utf-8');
+      fs.writeFileSync(path.join(dir, `${id}.md`), markdown, 'utf-8');
+    } catch (e) {
+      // 途中失敗は半端な記事を残さないよう作成ディレクトリを撤去
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* cleanup 失敗は無視 */
+      }
+      throw e;
+    }
+
+    this.invalidate();
+    return id;
+  }
+
+  //  親ディレクトリ配下に新規ディレクトリを作成する
+  createDirectory(parentPath: string[], name: string): void {
+    const err = validateDirName(name);
+    if (err) throw new Error(err);
+    const dir = path.join(this.rootDir, ...parentPath, name);
+    if (!this.isWithinRoot(dir)) {
+      throw new Error('不正なパスです。');
+    }
+    if (fs.existsSync(dir)) {
+      throw new Error('同名のフォルダが既に存在します。');
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    this.invalidate();
   }
 }

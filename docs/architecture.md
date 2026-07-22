@@ -322,3 +322,71 @@ sequenceDiagram
   運用で頻繁に変えたくなったら `wiki/` 配下の設定ファイル化へ移行する。
 - **UI方針**: **vanilla TypeScript を継続**（小さなハッシュルーター＋ビューモジュールを自作）。
   編集フォームや検索で状態管理が複雑化した段階で、フレームワーク導入を再検討する。
+
+---
+
+# 記事本文の Markdown 分離（実装済み）
+
+各記事は `UGBxxxx.json`（メタ）＋ `UGBxxxx.md`（本文）＋ `attachments/` で構成する。
+`Article.body` はメモリ上の表現として維持し、`getArticleDetail` 時にのみ `<id>.md` を読み込む
+（`ArticleManager.readBody`）。インデックス構築・添付/リンク解決は本文を読まないため一覧・ツリーの性能は不変。
+将来の Markdown レンダリング時はライブラリ追加＋HTMLサニタイズ（XSS対策）を別途行う。
+
+---
+
+# 新規記事作成機能（実装済み）
+
+トップページ／ディレクトリページの「＋ 新規記事作成」ボタンから `#/new`（初期ディレクトリ付きは
+`#/new/<categoryPath>`）へ遷移し、フォームで作成する。既存記事編集は本機能の後続とする。
+
+## スキーマ管理（単一の真実源）
+
+JSONスキーマ知識を機能側へ散らさないため、`src/backend/articleSchema.ts` に集約する。
+
+- `validateCreateInput(input, validators)` … タイトル/本文必須（トリム後1文字以上）、ディレクトリ名、
+  スキル/業務ID、関連記事ID、URLスキームを一元検証
+- `buildArticleRecord(params)` … JSON本体（キー順固定・body除外）と本文Markdownを構築
+- `serializeArticleJson` … 4スペースインデントで直列化（既存Wikiデータと統一）
+- 添付ビルダー（`inArticleDirAttachment` / `fileServerAttachment` / `articleAttachment` / `linkAttachment`）で
+  AttachmentRef の内部キー順も固定
+- `normalizeAbsolutePath`（前後空白＋囲みダブルクォート除去）、`baseName`（`/` `\` 両対応）、
+  `extOf`、`validateDirName`、`nowJstIso`（ホストTZ非依存で `+09:00`）
+
+`ArticleManager.createArticle` は「ディレクトリ生成 → ID採番 → 添付コピー → schemaで組立 → json/md書込」の
+手順のみを持ち、スキーマ知識を持たない。
+
+## IPC（追加）
+
+| チャネル | 内容 |
+| --- | --- |
+| `matrix:options` | スキル/業務の全候補（id・label・major）。`SkillMatrix.options()` |
+| `dialog:pickPath` | ファイル/フォルダ選択ダイアログ（mode指定）。**コピーはしない**（ステージング用）。絶対パス・種別・名前を返す |
+| `article:create` | `CreateArticleInput` を受けて記事一式を生成し `{ id }` を返す |
+
+作成者名は userData の `user.json` を正としてメイン側で解決する（匿名時は `"匿名"`）。
+
+## 入力仕様（確定事項）
+
+- **配置先**: 既存カテゴリのプルダウン＋新規サブディレクトリ（ネスト可）。トップからはルート直下が既定
+- **作成者/更新者**: 起動ユーザー名を自動採用。作成時は両者同一。**匿名モード**（既定オフ）で両者 `"匿名"`（別フラグは持たない）
+- **タイトル・本文**: ともに必須（本文はトリム後1文字以上）。本文はプレーンテキスト（md へ保存）
+- **タグ**: 自由入力＋既存タグの datalist サジェスト
+- **スキル・業務**: CSV由来の候補から選択のみ（新規不可）。major で optgroup グルーピング
+- **添付（複数・方式をプルダウン選択）**:
+  - ファイルアップロード → `dialog:pickPath` で選択 → 保存時に `attachments/` へコピー（file/folder）
+  - ファイルサーバ絶対パス → **手入力のみ**。囲みダブルクォートを除去して正規化。file/folder は
+    拡張子有無で**自動判定＋手動上書き可**。リンク切れ注意を明示
+  - 他記事 → id＋タイトルの datalist サジェスト
+  - 外部リンク → URL入力（http/https のみ）
+
+## 技術課題への対応
+
+- **ID採番の競合**（共有サーバ）: `max+1` の後に記事ディレクトリを**排他作成（EEXISTなら次IDへリトライ）**して回避
+- **書き込みの非原子性**: 途中失敗時は作成ディレクトリを撤去（クリーンアップ）
+- **タイムゾーン**: `nowJstIso()` でホストTZに依存せず `+09:00` を生成
+- **インデックス陳腐化**: 作成後にローカル無効化・再構築。他ユーザーは更新ボタンで反映
+
+## 検証済み（バックエンド）
+
+一時ROOTでの疎通テストで、ID採番（UGB0001→UGB0002）・新規サブディレクトリ生成・json/md/添付コピー・
+クォート付きパスの正規化・匿名時の `"匿名"`・本文空の拒否を確認済み。

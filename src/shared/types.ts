@@ -203,6 +203,57 @@ export type OpenLinkResult =
   | { status: 'invalid'; url?: string } // http/https 以外、または不正なURL
   | { status: 'error'; message: string };
 
+// ================================================================== //
+//  新規記事作成
+// ================================================================== //
+
+//  スキル/業務のプルダウン候補（major でグルーピング表示）
+export interface MatrixOption {
+  id: string;
+  label: string;
+  majorId: string;
+  majorLabel: string;
+}
+export interface MatrixOptions {
+  skills: MatrixOption[];
+  business: MatrixOption[];
+}
+
+//  パス選択ダイアログ（アップロード方式のステージング用。コピーはしない）
+export interface PickedPath {
+  path: string;
+  kind: 'file' | 'folder';
+  name: string;
+}
+
+//  新規作成時の添付入力（保存時にバックエンドが AttachmentRef へ解決）
+export type CreateAttachmentInput =
+  | { kind: 'upload'; sourcePath: string; fileType: 'file' | 'folder'; name: string }
+  | { kind: 'fileServer'; path: string; fileType: 'file' | 'folder' }
+  | { kind: 'article'; id: string }
+  | { kind: 'link'; url: string; name?: string };
+
+//  新規記事作成の入力
+export interface CreateArticleInput {
+  categoryPath: string[]; // 最終的な配置先（既存＋新規サブディレクトリを含む）
+  title: string;
+  body: string;           // 本文（トリム後1文字以上・必須）
+  anonymous: boolean;     // true: createdBy/updatedBy を "匿名"
+  tags: string[];
+  skill: string[];        // SK-xxxx
+  business: string[];     // BZ-xxxx
+  attachments: CreateAttachmentInput[];
+}
+
+export type CreateArticleResult =
+  | { status: 'ok'; id: string }
+  | { status: 'error'; message: string };
+
+//  ディレクトリ作成の結果
+export type CreateDirectoryResult =
+  | { status: 'ok' }
+  | { status: 'error'; message: string };
+
 // ------------------------------------------------------------------ //
 //  記事系 API（ファイル操作とは別系統）
 // ------------------------------------------------------------------ //
@@ -218,6 +269,13 @@ export interface ArticleAPI {
     articleId: string,
     attachmentIndex: number,
   ): Promise<OpenLinkResult>;
+  matrixOptions(): Promise<MatrixOptions>;
+  pickPath(mode: 'file' | 'folder'): Promise<PickedPath | null>;
+  createArticle(input: CreateArticleInput): Promise<CreateArticleResult>;
+  createDirectory(
+    parentPath: string[],
+    name: string,
+  ): Promise<CreateDirectoryResult>;
   refresh(): Promise<void>;
 }
 
@@ -233,4 +291,13 @@ export interface AttachDownloadPayload {
 export interface OpenLinkPayload {
   articleId: string;
   attachmentIndex: number;
+}
+
+export interface PickPathPayload {
+  mode: 'file' | 'folder';
+}
+
+export interface CreateDirectoryPayload {
+  parentPath: string[];
+  name: string;
 }
