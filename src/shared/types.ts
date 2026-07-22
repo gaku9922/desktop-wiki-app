@@ -330,6 +330,10 @@ export interface ArticleAPI {
   deleteArticle(id: string): Promise<DeleteArticleResult>;
   // キーワード検索（タイトル＋本文）。一致した記事サマリを返す
   search(query: string): Promise<ArticleSummary[]>;
+  // 共有リンク文字列をクリップボードへコピー
+  copyToClipboard(text: string): Promise<void>;
+  // 共有リンク経由の遷移指示を受け取る（main → renderer）
+  onDeepLink(callback: (hash: string) => void): void;
   createDirectory(
     parentPath: string[],
     name: string,
