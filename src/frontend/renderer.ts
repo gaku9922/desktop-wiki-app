@@ -993,6 +993,7 @@ function tagField(selected: string[]): HTMLElement {
       add();
     }
   });
+  renderChips(); // 既存タグ（編集時）を初期表示
   return field('タグ', [input, dl, chips]);
 }
 
@@ -1024,6 +1025,7 @@ function multiSelectField(
     }
     sel.value = '';
   });
+  renderChips(); // 既存のスキル/業務（編集時）を初期表示
   return field(labelText, [sel, chips]);
 }
 
