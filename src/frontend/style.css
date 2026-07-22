@@ -656,3 +656,19 @@ body.resizing-x .sidebar { transition: none; }
 .star-btn { padding: 6px 12px; line-height: 1; font-size: 15px; color: var(--text-muted); }
 .star-btn--on { color: #e0a72c; border-color: #e6c073; }
 .star-btn:hover { border-color: var(--border-strong); }
+
+/* 宇宙スキル標準（スキル・業務を内包する箱） */
+.space-skill {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+.space-skill__item { display: flex; flex-direction: column; gap: 6px; }
+.space-skill__label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+/* フォーム内: ネストした .field の下余白をリセット */
+.space-skill .field { margin-bottom: 0; }

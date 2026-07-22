@@ -805,11 +805,18 @@ function buildForm(init: FormInit): void {
   const selectedTags: string[] = [...init.tags];
   page.appendChild(tagField(selectedTags));
 
-  // ---- スキル / 業務 ----
+  // ---- 宇宙スキル標準（スキル / 業務を内包）----
   const selectedSkill: string[] = [...init.skill];
   const selectedBusiness: string[] = [...init.business];
-  page.appendChild(multiSelectField('スキル（skill）', matrixOptions.skills, selectedSkill));
-  page.appendChild(multiSelectField('業務（business）', matrixOptions.business, selectedBusiness));
+  page.appendChild(
+    el('div', { class: 'field' }, [
+      el('label', { class: 'field__label', text: '宇宙スキル標準' }),
+      el('div', { class: 'space-skill' }, [
+        multiSelectField('スキル（skill）', matrixOptions.skills, selectedSkill),
+        multiSelectField('業務（business）', matrixOptions.business, selectedBusiness),
+      ]),
+    ]),
+  );
 
   // ---- 添付（既存＋新規追加を一覧で保持）----
   const attachments: EditAttachmentInput[] = [...init.attachments];
@@ -1475,9 +1482,17 @@ async function renderArticle(id: string): Promise<void> {
     page.appendChild(section('タグ', tags));
   }
 
-  // スキル / ビジネス
-  if (detail.skill.length) page.appendChild(section('スキル（skill）', labelChips(detail.skill)));
-  if (detail.business.length) page.appendChild(section('業務（business）', labelChips(detail.business)));
+  // 宇宙スキル標準（スキル・業務を内包）
+  if (detail.skill.length || detail.business.length) {
+    const inner = el('div', { class: 'space-skill' });
+    if (detail.skill.length) {
+      inner.appendChild(spaceSkillItem('スキル（skill）', labelChips(detail.skill)));
+    }
+    if (detail.business.length) {
+      inner.appendChild(spaceSkillItem('業務（business）', labelChips(detail.business)));
+    }
+    page.appendChild(section('宇宙スキル標準', inner));
+  }
 
   // 添付・関連
   page.appendChild(
@@ -1510,6 +1525,14 @@ function metaItem(label: string, value: string): HTMLElement {
 function section(title: string, body: Node): HTMLElement {
   return el('section', { class: 'article__section' }, [
     el('h3', { class: 'article__section-title', text: title }),
+    body,
+  ]);
+}
+
+//  宇宙スキル標準の内訳（スキル / 業務）1項目
+function spaceSkillItem(label: string, body: Node): HTMLElement {
+  return el('div', { class: 'space-skill__item' }, [
+    el('div', { class: 'space-skill__label', text: label }),
     body,
   ]);
 }
