@@ -1204,6 +1204,69 @@ function radio(name: string, labelText: string): { input: HTMLInputElement; labe
 }
 
 // ------------------------------------------------------------------ //
+//  記事の ⋯ メニュー（将来の機能追加用の器。今は削除のみ）
+// ------------------------------------------------------------------ //
+function articleMenu(detail: ArticleDetail): HTMLElement {
+  const a = detail.article;
+  const wrap = el('div', { class: 'kebab' });
+  const btn = el('button', { class: 'btn kebab__btn', text: '⋯', title: 'その他' });
+  const menu = el('div', { class: 'kebab__menu' });
+
+  let closeHandler: ((e: MouseEvent) => void) | null = null;
+  const closeMenu = (): void => {
+    menu.classList.remove('open');
+    if (closeHandler) {
+      document.removeEventListener('click', closeHandler);
+      closeHandler = null;
+    }
+  };
+  const openMenu = (): void => {
+    menu.classList.add('open');
+    closeHandler = (ev): void => {
+      if (!wrap.contains(ev.target as Node)) closeMenu();
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler!), 0);
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('open')) closeMenu();
+    else openMenu();
+  });
+
+  const del = el('button', { class: 'kebab__item kebab__item--danger', text: '記事を削除' });
+  del.addEventListener('click', () => {
+    closeMenu();
+    openConfirmModal({
+      title: '記事を削除しますか？',
+      message:
+        `この操作は取り消せません。記事ディレクトリ「${a.id}」を完全に削除します` +
+        `（本文・記事内添付ファイルを含む）。`,
+      confirmText: '削除',
+      onConfirm: async () => {
+        try {
+          const result = await window.articleAPI.deleteArticle(a.id);
+          if (result.status === 'ok') {
+            await window.articleAPI.refresh();
+            await loadIndex();
+            renderSidebar();
+            showToast('記事を削除しました');
+            navigate(detail.categoryPath.length ? categoryHash(detail.categoryPath) : '#/');
+          } else {
+            showToast(`削除失敗: ${result.message}`, 'error');
+          }
+        } catch (err) {
+          showToast(`削除失敗: ${errorMessage(err)}`, 'error');
+        }
+      },
+    });
+  });
+  menu.append(del);
+
+  wrap.append(btn, menu);
+  return wrap;
+}
+
+// ------------------------------------------------------------------ //
 //  記事閲覧ページ
 // ------------------------------------------------------------------ //
 async function renderArticle(id: string): Promise<void> {
@@ -1232,13 +1295,13 @@ async function renderArticle(id: string): Promise<void> {
   // パンくず（各カテゴリはフォルダページへのリンク）
   page.appendChild(breadcrumb(detail.categoryPath, { lastIsLink: true }));
 
-  // タイトル＋編集ボタン（右上）
+  // タイトル＋アクション（編集・⋯メニュー）（右上）
   const editBtn = el('button', { class: 'btn', text: '編集' });
   editBtn.addEventListener('click', () => navigate(editHash(a.id)));
   page.appendChild(
     el('div', { class: 'page__toolbar' }, [
       el('h1', { class: 'article__title', text: a.title }),
-      editBtn,
+      el('div', { class: 'article__actions' }, [editBtn, articleMenu(detail)]),
     ]),
   );
 

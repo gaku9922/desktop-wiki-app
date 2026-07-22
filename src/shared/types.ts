@@ -276,6 +276,11 @@ export type UpdateArticleResult =
   | { status: 'ok'; id: string }
   | { status: 'error'; message: string };
 
+//  記事削除の結果
+export type DeleteArticleResult =
+  | { status: 'ok' }
+  | { status: 'error'; message: string };
+
 // ------------------------------------------------------------------ //
 //  記事系 API（ファイル操作とは別系統）
 // ------------------------------------------------------------------ //
@@ -295,6 +300,7 @@ export interface ArticleAPI {
   pickPath(mode: 'file' | 'folder'): Promise<PickedPath | null>;
   createArticle(input: CreateArticleInput): Promise<CreateArticleResult>;
   updateArticle(input: UpdateArticleInput): Promise<UpdateArticleResult>;
+  deleteArticle(id: string): Promise<DeleteArticleResult>;
   createDirectory(
     parentPath: string[],
     name: string,
@@ -323,4 +329,8 @@ export interface PickPathPayload {
 export interface CreateDirectoryPayload {
   parentPath: string[];
   name: string;
+}
+
+export interface DeleteArticlePayload {
+  id: string;
 }

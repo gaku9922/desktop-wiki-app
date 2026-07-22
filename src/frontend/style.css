@@ -568,3 +568,37 @@ button { font-family: inherit; }
 
 /* ディレクトリページ: ツールバーのアクション（ディレクトリ作成 + 新規記事） */
 .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* 記事ページ: アクション（編集 + ⋯メニュー） */
+.article__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.kebab { position: relative; display: inline-block; }
+.kebab__btn { padding: 6px 12px; line-height: 1; }
+.kebab__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 20;
+  display: none;
+}
+.kebab__menu.open { display: block; }
+.kebab__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+}
+.kebab__item:hover { background: var(--surface-sunken); }
+.kebab__item--danger { color: var(--danger); }
+.kebab__item--danger:hover { background: var(--danger-light); }

@@ -14,6 +14,8 @@ import type {
   CreateDirectoryResult,
   UpdateArticleInput,
   UpdateArticleResult,
+  DeleteArticlePayload,
+  DeleteArticleResult,
   DeletePayload,
   DownloadPayload,
   OpenLinkPayload,
@@ -238,6 +240,24 @@ const registerIpcHandlers = (
         }
         const id = await am.updateArticle(input, userName);
         return { status: 'ok', id };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------ //
+  //  記事削除（記事ディレクトリを丸ごと撤去）
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'article:delete',
+    (_event, { id }: DeleteArticlePayload): DeleteArticleResult => {
+      try {
+        am.deleteArticle(id);
+        return { status: 'ok' };
       } catch (err) {
         return {
           status: 'error',
