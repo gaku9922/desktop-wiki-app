@@ -23,6 +23,7 @@ const searchKeyword = document.getElementById('searchKeyword') as HTMLInputEleme
 const searchTag = document.getElementById('searchTag') as HTMLSelectElement;
 const sidebarEl = document.getElementById('sidebar')!;
 const sidebarResizer = document.getElementById('sidebarResizer')!;
+const favoritesEl = document.getElementById('favorites')!;
 
 // ユーザー関連 DOM
 const userBadge = document.getElementById('userBadge') as HTMLButtonElement;
@@ -42,6 +43,7 @@ let wikiTree: WikiTreeNode[] = [];
 let articleIndex: ArticleSummary[] = [];
 const summaryById = new Map<string, ArticleSummary>();
 let matrixOptions: MatrixOptions | null = null;
+let favoriteIds = new Set<string>();
 let currentUserName = '';
 
 // ------------------------------------------------------------------ //
@@ -109,13 +111,59 @@ async function refreshAll(): Promise<void> {
   try {
     await window.articleAPI.refresh();
     await loadIndex();
+    await loadFavorites();
     renderSidebar();
+    renderFavorites();
     populateSearchControls();
     render();
     showToast('最新の状態に更新しました');
   } catch (err) {
     showToast(`更新失敗: ${errorMessage(err)}`, 'error');
   }
+}
+
+// ------------------------------------------------------------------ //
+//  お気に入り
+// ------------------------------------------------------------------ //
+async function loadFavorites(): Promise<void> {
+  try {
+    favoriteIds = new Set(await window.favAPI.list());
+  } catch {
+    favoriteIds = new Set();
+  }
+}
+
+function isFavorite(id: string): boolean {
+  return favoriteIds.has(id);
+}
+
+//  サイドバーのお気に入り一覧を描画（存在する記事のみ）
+function renderFavorites(): void {
+  favoritesEl.innerHTML = '';
+  const ids = [...favoriteIds].filter((id) => summaryById.has(id));
+  if (ids.length === 0) {
+    favoritesEl.appendChild(
+      el('p', { class: 'placeholder placeholder--sm', text: 'お気に入りはありません' }),
+    );
+    return;
+  }
+  for (const id of ids) {
+    const s = summaryById.get(id)!;
+    const row = el('div', { class: 'fav-row', title: s.title }, [
+      el('span', { class: 'fav-row__icon', text: '★' }),
+      el('span', { class: 'fav-row__title', text: s.title }),
+    ]);
+    row.addEventListener('click', () => navigate(`#/article/${id}`));
+    favoritesEl.appendChild(row);
+  }
+}
+
+//  お気に入りをトグルし、状態・サイドバーを更新
+async function toggleFavorite(id: string): Promise<boolean> {
+  const result = await window.favAPI.toggle(id);
+  favoriteIds = new Set(result.ids);
+  renderFavorites();
+  return result.favorited;
 }
 
 // ------------------------------------------------------------------ //
@@ -830,6 +878,7 @@ function buildForm(init: FormInit): void {
         await window.articleAPI.refresh();
         await loadIndex();
         renderSidebar();
+        renderFavorites();
         populateSearchControls();
         showToast(`記事を${verb}しました`);
         navigate(`#/article/${result.id}`);
@@ -1277,6 +1326,32 @@ function radio(name: string, labelText: string): { input: HTMLInputElement; labe
 }
 
 // ------------------------------------------------------------------ //
+//  お気に入り星ボタン（★=登録済み / ☆=未登録）
+// ------------------------------------------------------------------ //
+function favoriteButton(id: string): HTMLElement {
+  const btn = el('button', { class: 'btn star-btn' });
+  const paint = (fav: boolean): void => {
+    btn.textContent = fav ? '★' : '☆';
+    btn.classList.toggle('star-btn--on', fav);
+    btn.title = fav ? 'お気に入りから解除' : 'お気に入りに登録';
+    btn.setAttribute('aria-label', btn.title);
+  };
+  paint(isFavorite(id));
+  btn.addEventListener('click', async () => {
+    btn.setAttribute('disabled', 'true');
+    try {
+      const fav = await toggleFavorite(id);
+      paint(fav);
+    } catch (err) {
+      showToast(`お気に入りの更新に失敗しました: ${errorMessage(err)}`, 'error');
+    } finally {
+      btn.removeAttribute('disabled');
+    }
+  });
+  return btn;
+}
+
+// ------------------------------------------------------------------ //
 //  記事の ⋯ メニュー（将来の機能追加用の器。今は削除のみ）
 // ------------------------------------------------------------------ //
 function articleMenu(detail: ArticleDetail): HTMLElement {
@@ -1321,7 +1396,9 @@ function articleMenu(detail: ArticleDetail): HTMLElement {
           if (result.status === 'ok') {
             await window.articleAPI.refresh();
             await loadIndex();
+            await loadFavorites();
             renderSidebar();
+            renderFavorites();
             populateSearchControls();
             showToast('記事を削除しました');
             navigate(detail.categoryPath.length ? categoryHash(detail.categoryPath) : '#/');
@@ -1369,13 +1446,14 @@ async function renderArticle(id: string): Promise<void> {
   // パンくず（各カテゴリはフォルダページへのリンク）
   page.appendChild(breadcrumb(detail.categoryPath, { lastIsLink: true }));
 
-  // タイトル＋アクション（編集・⋯メニュー）（右上）
+  // タイトル＋アクション（星・編集・⋯メニュー）（右上）
+  const starBtn = favoriteButton(a.id);
   const editBtn = el('button', { class: 'btn', text: '編集' });
   editBtn.addEventListener('click', () => navigate(editHash(a.id)));
   page.appendChild(
     el('div', { class: 'page__toolbar' }, [
       el('h1', { class: 'article__title', text: a.title }),
-      el('div', { class: 'article__actions' }, [editBtn, articleMenu(detail)]),
+      el('div', { class: 'article__actions' }, [starBtn, editBtn, articleMenu(detail)]),
     ]),
   );
 
@@ -1693,7 +1771,9 @@ sidebarResizer.addEventListener('mousedown', (e) => {
   }
   try {
     await loadIndex();
+    await loadFavorites();
     renderSidebar();
+    renderFavorites();
     populateSearchControls();
     render();
   } catch (err) {

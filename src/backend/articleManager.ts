@@ -94,6 +94,11 @@ export default class ArticleManager {
     return this.ensureIndex().summaries;
   }
 
+  //  記事が存在するか（お気に入りの存在検証などに使用）
+  hasArticle(id: string): boolean {
+    return this.ensureIndex().byId.has(id);
+  }
+
   // ------------------------------------------------------------------ //
   //  キーワード検索（タイトル＋本文）。初回のみ .md を読み込みキャッシュ
   // ------------------------------------------------------------------ //

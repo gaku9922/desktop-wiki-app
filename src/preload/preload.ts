@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ArticleAPI, FileAPI, JsonValue, UserAPI } from '../shared/types';
+import type {
+  ArticleAPI,
+  FavoriteAPI,
+  FileAPI,
+  JsonValue,
+  UserAPI,
+} from '../shared/types';
 
 // ------------------------------------------------------------------ //
 //  フロントエンドに公開するAPIの定義
@@ -70,8 +76,18 @@ const articleAPI: ArticleAPI = {
 };
 
 // ------------------------------------------------------------------ //
+//  お気に入り API の定義
+// ------------------------------------------------------------------ //
+const favAPI: FavoriteAPI = {
+  list: () => ipcRenderer.invoke('fav:list'),
+
+  toggle: (id: string) => ipcRenderer.invoke('fav:toggle', { id }),
+};
+
+// ------------------------------------------------------------------ //
 //  APIの公開
 // ------------------------------------------------------------------ //
 contextBridge.exposeInMainWorld('fileAPI', fileAPI);
 contextBridge.exposeInMainWorld('userAPI', userAPI);
 contextBridge.exposeInMainWorld('articleAPI', articleAPI);
+contextBridge.exposeInMainWorld('favAPI', favAPI);
