@@ -119,6 +119,7 @@ button { font-family: inherit; }
 }
 
 .sidebar {
+  position: relative;
   width: var(--sidebar-w);
   flex-shrink: 0;
   border-right: 1px solid var(--border);
@@ -133,6 +134,22 @@ button { font-family: inherit; }
   border-right: none;
   overflow: hidden;
 }
+
+/* サイドバー幅のリサイザー（右端をドラッグ） */
+.sidebar__resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+.sidebar__resizer:hover { background: var(--accent-light); }
+.layout--sidebar-hidden .sidebar__resizer { display: none; }
+/* ドラッグ中: 遷移を止めてカーソル・選択を固定 */
+body.resizing-x { cursor: col-resize; user-select: none; }
+body.resizing-x .sidebar { transition: none; }
 
 .sidebar__header {
   height: 38px;
@@ -602,3 +619,9 @@ button { font-family: inherit; }
 .kebab__item:hover { background: var(--surface-sunken); }
 .kebab__item--danger { color: var(--danger); }
 .kebab__item--danger:hover { background: var(--danger-light); }
+
+/* サイドバー: 検索セクション */
+.sidebar__search { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.search-box { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.search-box__input { margin-top: 0; height: 32px; }
+.search-box__tag { padding: 6px 8px; font-size: 13px; }

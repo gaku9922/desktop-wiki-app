@@ -72,6 +72,8 @@ export default class ArticleManager {
     summaries: ArticleSummary[];
     byId: Map<string, ArticleSummary>;
   } | null = null;
+  // キーワード検索インデックス（id -> "タイトル\n本文" の小文字）。遅延構築
+  private searchCache: Map<string, string> | null = null;
 
   constructor(rootDir: string, matrix: SkillMatrix) {
     this.rootDir = path.resolve(rootDir);
@@ -81,6 +83,7 @@ export default class ArticleManager {
   // 書き込み・削除後などにキャッシュを無効化する
   invalidate(): void {
     this.cache = null;
+    this.searchCache = null;
   }
 
   getTree(): WikiTreeNode[] {
@@ -89,6 +92,39 @@ export default class ArticleManager {
 
   getIndex(): ArticleSummary[] {
     return this.ensureIndex().summaries;
+  }
+
+  // ------------------------------------------------------------------ //
+  //  キーワード検索（タイトル＋本文）。初回のみ .md を読み込みキャッシュ
+  // ------------------------------------------------------------------ //
+  private ensureSearchIndex(): Map<string, string> {
+    if (!this.searchCache) {
+      const map = new Map<string, string>();
+      for (const s of this.ensureIndex().summaries) {
+        const body = this.readBody(s);
+        map.set(s.id, `${s.title}\n${body}`.toLowerCase());
+      }
+      this.searchCache = map;
+    }
+    return this.searchCache;
+  }
+
+  //  空白区切りトークンの AND 部分一致（大小文字無視）。updatedAt 降順で返す
+  search(query: string): ArticleSummary[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const tokens = q.split(/\s+/).filter((t) => t.length > 0);
+    const idx = this.ensureSearchIndex();
+    const { byId } = this.ensureIndex();
+    const results: ArticleSummary[] = [];
+    for (const [id, text] of idx) {
+      if (tokens.every((t) => text.includes(t))) {
+        const s = byId.get(id);
+        if (s) results.push(s);
+      }
+    }
+    results.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return results;
   }
 
   // ------------------------------------------------------------------ //
