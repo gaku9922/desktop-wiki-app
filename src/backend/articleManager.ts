@@ -521,6 +521,19 @@ export default class ArticleManager {
     return id;
   }
 
+  //  記事を削除する。記事ディレクトリ（json/md/attachments）を丸ごと撤去
+  deleteArticle(id: string): void {
+    const { byId } = this.ensureIndex();
+    const summary = byId.get(id);
+    if (!summary) throw new Error('対象の記事が見つかりません。');
+    const dir = this.articleDirOf(summary);
+    if (!this.isWithinRoot(dir) || dir === this.rootDir) {
+      throw new Error('不正なパスです。');
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+    this.invalidate();
+  }
+
   //  親ディレクトリ配下に新規ディレクトリを作成する
   createDirectory(parentPath: string[], name: string): void {
     const err = validateDirName(name);
