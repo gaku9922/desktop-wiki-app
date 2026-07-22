@@ -472,15 +472,22 @@ async function renderSkillMatrix(): Promise<void> {
     m.set(l.s, l.level);
   }
   const subLabel = new Map<string, string>();
+  const subDesc = new Map<string, string>();
   const skillMajorSubs = new Map<string, string[]>();
   for (const sm of data.skillMajors) {
     skillMajorSubs.set(sm.id, sm.subs.map((s) => s.id));
-    for (const s of sm.subs) subLabel.set(s.id, s.label);
+    for (const s of sm.subs) {
+      subLabel.set(s.id, s.label);
+      if (s.desc) subDesc.set(s.id, s.desc);
+    }
   }
   const bizMajorSubs = new Map<string, string[]>();
   for (const bm of data.businessMajors) {
     bizMajorSubs.set(bm.id, bm.subs.map((s) => s.id));
-    for (const s of bm.subs) subLabel.set(s.id, s.label);
+    for (const s of bm.subs) {
+      subLabel.set(s.id, s.label);
+      if (s.desc) subDesc.set(s.id, s.desc);
+    }
   }
 
   const maxLevel = (bizIds: string[], skillIds: string[]): number => {
@@ -513,6 +520,21 @@ async function renderSkillMatrix(): Promise<void> {
         '行=業務・列=スキルのマトリクスです。大項目をクリックで小項目を展開し、' +
         '小項目（業務・スキル）を選択すると関連する記事が表示されます。',
     }),
+  );
+  // 出典
+  const citeUrl = 'https://www8.cao.go.jp/space/skill/kaisai.html';
+  const citeLink = el('a', {
+    class: 'source-cite__link',
+    text: '宇宙スキル標準について:宇宙政策 - 内閣府',
+    title: citeUrl,
+    attrs: { href: citeUrl },
+  });
+  citeLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.articleAPI.openExternalUrl(citeUrl);
+  });
+  page.appendChild(
+    el('p', { class: 'source-cite' }, [el('span', { text: '出典: ' }), citeLink]),
   );
 
   const matrixWrap = el('div', { class: 'matrix-wrap' });
@@ -667,6 +689,8 @@ async function renderSkillMatrix(): Promise<void> {
     const label = subLabel.get(selected.id) ?? selected.id;
     if (selected.kind === 'business') {
       box.appendChild(el('h2', { class: 'related__title', text: `業務: ${label}（${selected.id}）` }));
+      const bdesc = subDesc.get(selected.id);
+      if (bdesc) box.appendChild(el('p', { class: 'related__desc', text: bdesc }));
       box.appendChild(relatedSection('この業務に紐づく記事', articlesByBusiness(selected.id)));
       // 関連スキルとその記事
       const skillIds = data.links
@@ -686,6 +710,8 @@ async function renderSkillMatrix(): Promise<void> {
       }
     } else {
       box.appendChild(el('h2', { class: 'related__title', text: `スキル: ${label}（${selected.id}）` }));
+      const sdesc = subDesc.get(selected.id);
+      if (sdesc) box.appendChild(el('p', { class: 'related__desc', text: sdesc }));
       box.appendChild(relatedSection('このスキルに紐づく記事', articlesBySkill(selected.id)));
       const bizIds = data.links
         .filter((l) => l.s === selected!.id)

@@ -56,6 +56,8 @@ const articleAPI: ArticleAPI = {
   openLink: (articleId: string, attachmentIndex: number) =>
     ipcRenderer.invoke('link:open', { articleId, attachmentIndex }),
 
+  openExternalUrl: (url: string) => ipcRenderer.invoke('link:openUrl', { url }),
+
   matrixOptions: () => ipcRenderer.invoke('matrix:options'),
 
   matrixFull: () => ipcRenderer.invoke('matrix:full'),

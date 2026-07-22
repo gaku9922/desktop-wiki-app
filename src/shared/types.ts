@@ -225,6 +225,7 @@ export interface MatrixOptions {
 export interface MatrixSub {
   id: string;
   label: string;
+  desc?: string; // 詳細説明（あれば）
 }
 export interface MatrixMajor {
   id: string;
@@ -319,6 +320,8 @@ export interface ArticleAPI {
     articleId: string,
     attachmentIndex: number,
   ): Promise<OpenLinkResult>;
+  // 任意のURLを既定ブラウザで開く（http/https のみ）
+  openExternalUrl(url: string): Promise<OpenLinkResult>;
   matrixOptions(): Promise<MatrixOptions>;
   matrixFull(): Promise<MatrixData>;
   pickPath(mode: 'file' | 'folder'): Promise<PickedPath | null>;
@@ -346,6 +349,10 @@ export interface AttachDownloadPayload {
 export interface OpenLinkPayload {
   articleId: string;
   attachmentIndex: number;
+}
+
+export interface OpenUrlPayload {
+  url: string;
 }
 
 export interface PickPathPayload {

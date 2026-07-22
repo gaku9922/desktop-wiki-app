@@ -23,6 +23,7 @@ import type {
   DownloadPayload,
   OpenLinkPayload,
   OpenLinkResult,
+  OpenUrlPayload,
   PickPathPayload,
   PickedPath,
   ReadPayload,
@@ -185,6 +186,26 @@ const registerIpcHandlers = (
           return { status: 'invalid', url: resolved.url };
         }
         await shell.openExternal(resolved.url);
+        return { status: 'ok' };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // 任意URLを既定ブラウザで開く（http/https のみ）
+  ipcMain.handle(
+    'link:openUrl',
+    async (_event, { url }: OpenUrlPayload): Promise<OpenLinkResult> => {
+      try {
+        const proto = new URL(url).protocol;
+        if (proto !== 'http:' && proto !== 'https:') {
+          return { status: 'invalid', url };
+        }
+        await shell.openExternal(url);
         return { status: 'ok' };
       } catch (err) {
         return {

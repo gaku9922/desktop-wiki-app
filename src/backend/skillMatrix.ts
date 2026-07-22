@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import type {
   MatrixData,
   MatrixLink,
@@ -120,8 +121,53 @@ export default class SkillMatrix {
           }
         }
       }
+      // 詳細説明（別CSV があれば）を小項目に付与
+      this.loadDescriptions('skill_descriptions.csv', this.skillMajors);
+      this.loadDescriptions('business_descriptions.csv', this.businessMajors);
     } catch {
       // matrix が読めなくても致命的にはしない（ラベルはIDのまま表示）
+    }
+  }
+
+  //  説明CSV（列: … 名称 … 内容 …）を読み、ラベル一致で小項目に desc を付与。
+  //  ファイルが無ければ何もしない（説明なし＝表示しない）。
+  private loadDescriptions(fileName: string, majors: MatrixMajor[]): void {
+    const filePath = path.join(path.dirname(this.csvPath), fileName);
+    let rows: string[][];
+    try {
+      rows = parseCsv(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      return; // ファイル無しは無視
+    }
+    const clean = (s: string): string => s.replace(/\s+/g, ' ').trim();
+    // このグループの ラベル集合
+    const labels = new Set<string>();
+    for (const m of majors) for (const s of m.subs) labels.add(s.label);
+    // ラベル → 説明
+    const descByLabel = new Map<string, string>();
+    for (const r of rows) {
+      // 行内で「既知ラベルに一致するセル」を名称、最長の別セルを説明とみなす
+      let name = '';
+      for (const cell of r) {
+        if (labels.has(clean(cell))) {
+          name = clean(cell);
+          break;
+        }
+      }
+      if (!name) continue;
+      let desc = '';
+      for (const cell of r) {
+        const c = cell.trim();
+        if (clean(cell) === name) continue;
+        if (c.length > desc.length) desc = c;
+      }
+      if (desc) descByLabel.set(name, desc);
+    }
+    for (const m of majors) {
+      for (const s of m.subs) {
+        const d = descByLabel.get(s.label);
+        if (d) s.desc = d;
+      }
     }
   }
 
