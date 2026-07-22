@@ -254,6 +254,28 @@ export type CreateDirectoryResult =
   | { status: 'ok' }
   | { status: 'error'; message: string };
 
+//  編集時の添付。既存（読み込んだ AttachmentRef）と新規追加（CreateAttachmentInput）の混在
+export type EditAttachmentInput =
+  | { source: 'existing'; ref: AttachmentRef }
+  | { source: 'new'; input: CreateAttachmentInput };
+
+//  既存記事の更新入力（id/createdAt/createdBy は保持、updated系は自動更新）
+export interface UpdateArticleInput {
+  id: string;
+  categoryPath: string[]; // 変更時は記事を移動する
+  title: string;
+  body: string;
+  anonymous: boolean;
+  tags: string[];
+  skill: string[];
+  business: string[];
+  attachments: EditAttachmentInput[];
+}
+
+export type UpdateArticleResult =
+  | { status: 'ok'; id: string }
+  | { status: 'error'; message: string };
+
 // ------------------------------------------------------------------ //
 //  記事系 API（ファイル操作とは別系統）
 // ------------------------------------------------------------------ //
@@ -272,6 +294,7 @@ export interface ArticleAPI {
   matrixOptions(): Promise<MatrixOptions>;
   pickPath(mode: 'file' | 'folder'): Promise<PickedPath | null>;
   createArticle(input: CreateArticleInput): Promise<CreateArticleResult>;
+  updateArticle(input: UpdateArticleInput): Promise<UpdateArticleResult>;
   createDirectory(
     parentPath: string[],
     name: string,

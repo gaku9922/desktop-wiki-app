@@ -237,7 +237,8 @@ type Route =
   | { type: 'top' }
   | { type: 'article'; id: string }
   | { type: 'category'; path: string[] }
-  | { type: 'new'; path: string[] };
+  | { type: 'new'; path: string[] }
+  | { type: 'edit'; id: string };
 
 function parseRoute(): Route {
   const h = location.hash;
@@ -247,6 +248,8 @@ function parseRoute(): Route {
   if (mc) return { type: 'category', path: mc[1].split('/').map(decodeURIComponent) };
   const mn = /^#\/new(?:\/(.+))?$/.exec(h);
   if (mn) return { type: 'new', path: mn[1] ? mn[1].split('/').map(decodeURIComponent) : [] };
+  const me = /^#\/edit\/(.+)$/.exec(h);
+  if (me) return { type: 'edit', id: decodeURIComponent(me[1]) };
   return { type: 'top' };
 }
 
@@ -263,6 +266,10 @@ function newHash(path: string[]): string {
   return '#/new' + (path.length ? '/' + path.map(encodeURIComponent).join('/') : '');
 }
 
+function editHash(id: string): string {
+  return '#/edit/' + encodeURIComponent(id);
+}
+
 function newArticleButton(targetPath: string[]): HTMLElement {
   const btn = el('button', { class: 'btn btn--primary', text: '＋ 新規記事作成' });
   btn.addEventListener('click', () => navigate(newHash(targetPath)));
@@ -274,6 +281,7 @@ function render(): void {
   if (route.type === 'article') renderArticle(route.id);
   else if (route.type === 'category') renderCategory(route.path);
   else if (route.type === 'new') renderNew(route.path);
+  else if (route.type === 'edit') renderEdit(route.id);
   else renderTop();
   updateSidebarActive();
 }
@@ -511,6 +519,42 @@ function openFolderCreateModal(parentPath: string[]): void {
   input.focus();
 }
 
+//  確認ポップアップ（ツーアクション）。OKで onConfirm を実行
+function openConfirmModal(opts: {
+  title: string;
+  message: string;
+  confirmText?: string;
+  onConfirm: () => void;
+}): void {
+  const cancel = el('button', { class: 'btn', text: 'キャンセル' });
+  const ok = el('button', { class: 'btn btn--danger', text: opts.confirmText ?? '削除' });
+  const overlay = el('div', { class: 'modal-overlay' }, [
+    el('div', { class: 'modal-card' }, [
+      el('h2', { class: 'modal-title', text: opts.title }),
+      el('p', { class: 'modal-desc', text: opts.message }),
+      el('div', { class: 'modal-actions' }, [cancel, ok]),
+    ]),
+  ]);
+  const close = (): void => overlay.remove();
+  cancel.addEventListener('click', close);
+  ok.addEventListener('click', () => {
+    close();
+    opts.onConfirm();
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+  ok.focus();
+}
+
 // ================================================================== //
 //  新規記事作成ページ
 // ================================================================== //
@@ -544,9 +588,19 @@ function guessPathType(raw: string): 'file' | 'folder' {
   return dot > 0 && dot < base.length - 1 ? 'file' : 'folder';
 }
 
-async function renderNew(initialPath: string[]): Promise<void> {
-  viewEl.innerHTML = '';
-  viewEl.appendChild(el('p', { class: 'placeholder', text: '読み込み中…' }));
+interface FormInit {
+  mode: 'create' | 'edit';
+  articleId?: string;
+  initialCategoryPath: string[];
+  title: string;
+  body: string;
+  tags: string[];
+  skill: string[];
+  business: string[];
+  attachments: EditAttachmentInput[];
+}
+
+async function ensureMatrixOptions(): Promise<void> {
   if (!matrixOptions) {
     try {
       matrixOptions = await window.articleAPI.matrixOptions();
@@ -554,11 +608,18 @@ async function renderNew(initialPath: string[]): Promise<void> {
       matrixOptions = { skills: [], business: [] };
     }
   }
-  if (parseRoute().type !== 'new') return;
+}
+
+//  新規作成 / 編集で共通のフォーム
+function buildForm(init: FormInit): void {
+  if (!matrixOptions) return;
+  const isEdit = init.mode === 'edit';
   viewEl.innerHTML = '';
 
   const page = el('div', { class: 'page page--form' });
-  page.appendChild(el('h1', { class: 'article__title', text: '新規記事作成' }));
+  page.appendChild(
+    el('h1', { class: 'article__title', text: isEdit ? '記事の編集' : '新規記事作成' }),
+  );
 
   // ---- 配置先フォルダ ----
   const cats = flattenCategories(wikiTree);
@@ -568,15 +629,20 @@ async function renderNew(initialPath: string[]): Promise<void> {
   for (const c of cats) {
     dirSelect.appendChild(el('option', { text: c.label, attrs: { value: c.path.join('/') } }));
   }
-  dirSelect.value = initialPath.join('/');
+  dirSelect.value = init.initialCategoryPath.join('/');
   page.appendChild(
     field('配置先フォルダ', [
       dirSelect,
-      el('div', { class: 'field__hint', text: '既存フォルダから選択してください（新規フォルダはフォルダページから作成できます）。' }),
+      el('div', {
+        class: 'field__hint',
+        text: isEdit
+          ? 'フォルダを変更すると記事が移動します。'
+          : '既存フォルダから選択してください（新規フォルダはフォルダページから作成できます）。',
+      }),
     ]),
   );
 
-  // ---- 作成者・匿名 ----
+  // ---- 作成者 / 更新者・匿名 ----
   const anon = document.createElement('input');
   anon.type = 'checkbox';
   const authorLabel = el('span', { class: 'author-name', text: currentUserName || '(未登録)' });
@@ -584,11 +650,19 @@ async function renderNew(initialPath: string[]): Promise<void> {
     authorLabel.textContent = anon.checked ? '匿名' : currentUserName || '(未登録)';
   };
   anon.addEventListener('change', updateAuthor);
-  const anonLabel = el('label', { class: 'checkbox' }, [anon, document.createTextNode(' 匿名で作成する')]);
+  const anonLabel = el('label', { class: 'checkbox' }, [
+    anon,
+    document.createTextNode(isEdit ? ' 匿名で更新する' : ' 匿名で作成する'),
+  ]);
   page.appendChild(
-    field('作成者 / 最終更新者', [
+    field(isEdit ? '最終更新者' : '作成者 / 最終更新者', [
       el('div', { class: 'author-line' }, [authorLabel, anonLabel]),
-      el('div', { class: 'field__hint', text: '作成時は最終更新者も作成者と同じになります。' }),
+      el('div', {
+        class: 'field__hint',
+        text: isEdit
+          ? '更新すると最終更新者が記録されます（作成者・作成日は変更されません）。'
+          : '作成時は最終更新者も作成者と同じになります。',
+      }),
     ]),
   );
 
@@ -596,6 +670,7 @@ async function renderNew(initialPath: string[]): Promise<void> {
   const titleInput = document.createElement('input');
   titleInput.className = 'form-input';
   titleInput.placeholder = '記事タイトル';
+  titleInput.value = init.title;
   page.appendChild(field('タイトル（必須）', [titleInput]));
 
   // ---- 本文 ----
@@ -603,64 +678,94 @@ async function renderNew(initialPath: string[]): Promise<void> {
   bodyInput.className = 'form-textarea';
   bodyInput.rows = 10;
   bodyInput.placeholder = '本文（プレーンテキスト。1文字以上必須）';
+  bodyInput.value = init.body;
   page.appendChild(field('本文（必須）', [bodyInput]));
 
   // ---- タグ ----
-  const selectedTags: string[] = [];
+  const selectedTags: string[] = [...init.tags];
   page.appendChild(tagField(selectedTags));
 
   // ---- スキル / 業務 ----
-  const selectedSkill: string[] = [];
-  const selectedBusiness: string[] = [];
+  const selectedSkill: string[] = [...init.skill];
+  const selectedBusiness: string[] = [...init.business];
   page.appendChild(multiSelectField('スキル（skill）', matrixOptions.skills, selectedSkill));
   page.appendChild(multiSelectField('業務（business）', matrixOptions.business, selectedBusiness));
 
-  // ---- 添付（追加済みは一覧に残る。複数・任意の組み合わせ可）----
-  const attachments: CreateAttachmentInput[] = [];
+  // ---- 添付（既存＋新規追加を一覧で保持）----
+  const attachments: EditAttachmentInput[] = [...init.attachments];
   page.appendChild(attachmentsField(attachments));
 
   // ---- 送信 ----
   const errorEl = el('p', { class: 'editor-error' });
-  const submit = el('button', { class: 'btn btn--primary', text: '作成' });
+  const submit = el('button', { class: 'btn btn--primary', text: isEdit ? '更新' : '作成' });
   const cancel = el('button', { class: 'btn', text: 'キャンセル' });
-  cancel.addEventListener('click', () =>
-    navigate(initialPath.length ? categoryHash(initialPath) : '#/'),
-  );
+  const cancelTarget =
+    isEdit && init.articleId
+      ? `#/article/${init.articleId}`
+      : init.initialCategoryPath.length
+        ? categoryHash(init.initialCategoryPath)
+        : '#/';
+  cancel.addEventListener('click', () => navigate(cancelTarget));
+
   submit.addEventListener('click', async () => {
     errorEl.textContent = '';
     const selectedDir = dirSelect.value ? dirSelect.value.split('/') : [];
-    const input: CreateArticleInput = {
-      categoryPath: selectedDir,
-      title: titleInput.value.trim(),
-      body: bodyInput.value,
-      anonymous: anon.checked,
-      tags: selectedTags,
-      skill: selectedSkill,
-      business: selectedBusiness,
-      attachments,
-    };
-    if (!input.title) {
+    const title = titleInput.value.trim();
+    const body = bodyInput.value;
+    if (!title) {
       errorEl.textContent = 'タイトルを入力してください。';
       return;
     }
-    if (!input.body.trim()) {
+    if (!body.trim()) {
       errorEl.textContent = '本文を入力してください（1文字以上）。';
       return;
     }
     submit.setAttribute('disabled', 'true');
+    const verb = isEdit ? '更新' : '作成';
     try {
-      const result = await window.articleAPI.createArticle(input);
+      let result: CreateArticleResult | UpdateArticleResult;
+      if (isEdit && init.articleId) {
+        result = await window.articleAPI.updateArticle({
+          id: init.articleId,
+          categoryPath: selectedDir,
+          title,
+          body,
+          anonymous: anon.checked,
+          tags: selectedTags,
+          skill: selectedSkill,
+          business: selectedBusiness,
+          attachments,
+        });
+      } else {
+        const newInputs = attachments
+          .filter(
+            (a): a is Extract<EditAttachmentInput, { source: 'new' }> =>
+              a.source === 'new',
+          )
+          .map((a) => a.input);
+        result = await window.articleAPI.createArticle({
+          categoryPath: selectedDir,
+          title,
+          body,
+          anonymous: anon.checked,
+          tags: selectedTags,
+          skill: selectedSkill,
+          business: selectedBusiness,
+          attachments: newInputs,
+        });
+      }
       if (result.status === 'ok') {
+        await window.articleAPI.refresh();
         await loadIndex();
         renderSidebar();
-        showToast('記事を作成しました');
+        showToast(`記事を${verb}しました`);
         navigate(`#/article/${result.id}`);
       } else {
-        errorEl.textContent = `作成失敗: ${result.message}`;
+        errorEl.textContent = `${verb}失敗: ${result.message}`;
         submit.removeAttribute('disabled');
       }
     } catch (err) {
-      errorEl.textContent = `作成失敗: ${errorMessage(err)}`;
+      errorEl.textContent = `${verb}失敗: ${errorMessage(err)}`;
       submit.removeAttribute('disabled');
     }
   });
@@ -668,6 +773,56 @@ async function renderNew(initialPath: string[]): Promise<void> {
   page.appendChild(el('div', { class: 'form-actions' }, [cancel, submit]));
 
   viewEl.appendChild(page);
+}
+
+async function renderNew(initialPath: string[]): Promise<void> {
+  viewEl.innerHTML = '';
+  viewEl.appendChild(el('p', { class: 'placeholder', text: '読み込み中…' }));
+  await ensureMatrixOptions();
+  if (parseRoute().type !== 'new') return;
+  buildForm({
+    mode: 'create',
+    initialCategoryPath: initialPath,
+    title: '',
+    body: '',
+    tags: [],
+    skill: [],
+    business: [],
+    attachments: [],
+  });
+}
+
+async function renderEdit(id: string): Promise<void> {
+  viewEl.innerHTML = '';
+  viewEl.appendChild(el('p', { class: 'placeholder', text: '読み込み中…' }));
+  await ensureMatrixOptions();
+  let detail: ArticleDetail | null;
+  try {
+    detail = await window.articleAPI.get(id);
+  } catch (err) {
+    viewEl.innerHTML = '';
+    viewEl.appendChild(el('p', { class: 'placeholder error', text: `読み込み失敗: ${errorMessage(err)}` }));
+    return;
+  }
+  const route = parseRoute();
+  if (route.type !== 'edit' || route.id !== id) return;
+  if (!detail) {
+    viewEl.innerHTML = '';
+    viewEl.appendChild(notFoundView(id));
+    return;
+  }
+  const a = detail.article;
+  buildForm({
+    mode: 'edit',
+    articleId: id,
+    initialCategoryPath: detail.categoryPath,
+    title: a.title,
+    body: a.body,
+    tags: a.tags,
+    skill: a.spaceSkill.skill,
+    business: a.spaceSkill.business,
+    attachments: (a.attachments || []).map((ref) => ({ source: 'existing', ref })),
+  });
 }
 
 //  フォームの1フィールド（ラベル＋中身）
@@ -771,7 +926,7 @@ function removableChip(text: string, onRemove: () => void): HTMLElement {
 // ---- 添付: 追加済み一覧 ＋ 追加エリア ----
 //  追加した添付は committed に蓄積され一覧に残る（方式プルダウンの変更に影響されない）。
 //  どの方式でも複数・任意の組み合わせで追加できる。
-function attachmentsField(committed: CreateAttachmentInput[]): HTMLElement {
+function attachmentsField(committed: EditAttachmentInput[]): HTMLElement {
   const wrap = el('div', { class: 'field' });
   wrap.appendChild(el('label', { class: 'field__label', text: '添付' }));
 
@@ -782,9 +937,9 @@ function attachmentsField(committed: CreateAttachmentInput[]): HTMLElement {
       list.appendChild(el('p', { class: 'field__hint', text: 'まだ添付はありません。' }));
       return;
     }
-    committed.forEach((att, i) => {
+    committed.forEach((item, i) => {
       list.appendChild(
-        committedAttachRow(att, () => {
+        committedAttachRow(item, () => {
           committed.splice(i, 1);
           renderList();
         }),
@@ -793,7 +948,7 @@ function attachmentsField(committed: CreateAttachmentInput[]): HTMLElement {
   };
 
   const adder = buildAttachAdder((att) => {
-    committed.push(att);
+    committed.push({ source: 'new', input: att });
     renderList();
   });
 
@@ -809,32 +964,65 @@ const ATTACH_BADGE: Record<CreateAttachmentInput['kind'], { text: string; cls: s
   link: { text: '外部リンク', cls: 'badge--link' },
 };
 
-//  追加済み添付の1行表示（削除可）
-function committedAttachRow(att: CreateAttachmentInput, onRemove: () => void): HTMLElement {
-  let icon = '📄';
-  let name = '';
-  if (att.kind === 'upload') {
-    icon = att.fileType === 'folder' ? '📁' : '📄';
-    name = att.name;
-  } else if (att.kind === 'fileServer') {
-    icon = att.fileType === 'folder' ? '📁' : '📄';
-    name = att.path;
-  } else if (att.kind === 'article') {
-    icon = '🔗';
-    const t = summaryById.get(att.id)?.title;
-    name = t ? `${t}（${att.id}）` : att.id;
-  } else {
-    icon = '🌐';
-    name = att.name || att.url;
+//  追加済み添付（既存 or 新規）の表示情報
+function describeAttachment(item: EditAttachmentInput): {
+  icon: string;
+  name: string;
+  badge: { text: string; cls: string };
+} {
+  if (item.source === 'new') {
+    const att = item.input;
+    if (att.kind === 'upload') {
+      return { icon: att.fileType === 'folder' ? '📁' : '📄', name: att.name, badge: ATTACH_BADGE.upload };
+    }
+    if (att.kind === 'fileServer') {
+      return { icon: att.fileType === 'folder' ? '📁' : '📄', name: att.path, badge: ATTACH_BADGE.fileServer };
+    }
+    if (att.kind === 'article') {
+      const t = summaryById.get(att.id)?.title;
+      return { icon: '🔗', name: t ? `${t}（${att.id}）` : att.id, badge: ATTACH_BADGE.article };
+    }
+    return { icon: '🌐', name: att.name || att.url, badge: ATTACH_BADGE.link };
   }
-  const badge = ATTACH_BADGE[att.kind];
+  // existing（読み込んだ AttachmentRef）
+  const ref = item.ref;
+  if (ref.type === 'article') {
+    const t = summaryById.get(ref.id)?.title;
+    return { icon: '🔗', name: t ? `${t}（${ref.id}）` : ref.id, badge: ATTACH_BADGE.article };
+  }
+  if (ref.type === 'link') {
+    return { icon: '🌐', name: ref.name || ref.url, badge: ATTACH_BADGE.link };
+  }
+  // file / folder
+  const badge = ref.method === 'inFileServer' ? ATTACH_BADGE.fileServer : ATTACH_BADGE.upload;
+  const name = ref.method === 'inFileServer' ? ref.path ?? ref.name : ref.name;
+  return { icon: ref.type === 'folder' ? '📁' : '📄', name, badge };
+}
+
+//  追加済み添付の1行表示（削除可）
+function committedAttachRow(item: EditAttachmentInput, onRemove: () => void): HTMLElement {
+  const d = describeAttachment(item);
   const row = el('div', { class: 'attach-row' }, [
-    el('span', { class: 'attach-row__icon', text: icon }),
-    el('span', { class: 'attach-row__name', text: name }),
-    el('span', { class: `badge ${badge.cls}`, text: badge.text }),
+    el('span', { class: 'attach-row__icon', text: d.icon }),
+    el('span', { class: 'attach-row__name', text: d.name }),
+    el('span', { class: `badge ${d.badge.cls}`, text: d.badge.text }),
   ]);
+  // 削除前に確認ポップアップ（ツーアクション）
+  const isExistingInArticle =
+    item.source === 'existing' &&
+    (item.ref.type === 'file' || item.ref.type === 'folder') &&
+    item.ref.method === 'inArticleDir';
   const x = el('button', { class: 'chip-sel__x', text: '×', title: '削除' });
-  x.addEventListener('click', onRemove);
+  x.addEventListener('click', () => {
+    openConfirmModal({
+      title: '添付を削除しますか？',
+      message:
+        `「${d.name}」を一覧から削除します。` +
+        (isExistingInArticle ? ' 保存時に記事内の実体ファイルも削除されます。' : ''),
+      confirmText: '削除',
+      onConfirm: onRemove,
+    });
+  });
   row.append(x);
   return row;
 }
@@ -1044,7 +1232,15 @@ async function renderArticle(id: string): Promise<void> {
   // パンくず（各カテゴリはフォルダページへのリンク）
   page.appendChild(breadcrumb(detail.categoryPath, { lastIsLink: true }));
 
-  page.appendChild(el('h1', { class: 'article__title', text: a.title }));
+  // タイトル＋編集ボタン（右上）
+  const editBtn = el('button', { class: 'btn', text: '編集' });
+  editBtn.addEventListener('click', () => navigate(editHash(a.id)));
+  page.appendChild(
+    el('div', { class: 'page__toolbar' }, [
+      el('h1', { class: 'article__title', text: a.title }),
+      editBtn,
+    ]),
+  );
 
   // メタ（作成日＋作成者 / 更新日＋更新者 をそれぞれ並べる。折り返し可）
   const meta = el('div', { class: 'article__meta' }, [

@@ -57,6 +57,8 @@ const articleAPI: ArticleAPI = {
 
   createArticle: (input) => ipcRenderer.invoke('article:create', input),
 
+  updateArticle: (input) => ipcRenderer.invoke('article:update', input),
+
   createDirectory: (parentPath: string[], name: string) =>
     ipcRenderer.invoke('dir:create', { parentPath, name }),
 

@@ -390,3 +390,40 @@ JSONスキーマ知識を機能側へ散らさないため、`src/backend/articl
 
 一時ROOTでの疎通テストで、ID採番（UGB0001→UGB0002）・新規サブディレクトリ生成・json/md/添付コピー・
 クォート付きパスの正規化・匿名時の `"匿名"`・本文空の拒否を確認済み。
+
+---
+
+# 既存記事の編集機能（実装済み）
+
+記事閲覧ページ右上の「編集」ボタンから `#/edit/:id` へ遷移し、新規作成と同一のフォームを
+**事前入力状態**で開く（`buildForm` を create/edit で共通化）。
+
+## 保存セマンティクス
+- `id` / `createdAt` / `createdBy` は**保持**、`updatedAt`=現在時刻（JST）、`updatedBy`=起動ユーザー（匿名時は `"匿名"`）
+- スキーマ層の `buildArticleRecord` / `serializeArticleJson` を再利用し JSON＋MD を書き戻す
+- 検証は `validateUpdateInput`（`validateCore` を create と共用。新規添付のみ `validateNewAttachment`）
+
+## フォルダ移動（案A）
+配置先フォルダを変更して保存すると、記事ディレクトリを移動する（`fs.renameSync`。id 不変）。
+移動先に同名IDがあれば拒否。
+
+## 添付の差分処理
+編集フォームの添付一覧は「既存（`AttachmentRef`）」と「新規追加（`CreateAttachmentInput`）」の
+混在（`EditAttachmentInput`）。保存時に `ArticleManager.updateArticle` が次を実施:
+- 既存を維持 → そのまま採用（inArticleDir は再コピー不要、パス再構築）
+- 既存を一覧から削除 → 保存時に `attachments/` の実体を削除（**孤児掃除**: 最終参照されない
+  ファイル/フォルダを削除。空になれば `attachments/` も削除）
+- 新規追加 → 新規作成と同じ解決（upload は `attachments/` へコピー）
+
+## IPC（追加）
+| チャネル | 内容 |
+| --- | --- |
+| `article:update` | `UpdateArticleInput` を受けて更新、`{ id }` を返す |
+
+## 留意点
+- **同時編集**: ロックなし（last-write-wins）。将来 `updatedAt` の楽観ロックを検討可
+- **非原子性**: 移動・添付削除・書込は原子的でない。添付削除は不可逆（保存時に確定）
+
+## 検証済み（バックエンド）
+一時ROOTで、フォルダ移動（旧場所消滅）・添付の維持/削除/追加（孤児掃除）・
+`createdAt`/`createdBy` 保持・`updatedBy` 更新・タイトル/タグ/スキル/本文の反映を確認済み。
