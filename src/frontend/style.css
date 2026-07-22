@@ -470,3 +470,99 @@ button { font-family: inherit; }
 .btn:hover { background: var(--surface-raised); }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--primary:hover { background: var(--accent-dark); }
+
+/* ================================================================== */
+/*  New article form                                                  */
+/* ================================================================== */
+.page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page--form .field { margin-bottom: 20px; }
+.field__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.field__hint { font-size: 12px; color: var(--text-faint); margin: 4px 0; }
+
+.form-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--surface);
+}
+.form-select:focus { outline: none; border-color: var(--accent); }
+
+.form-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  line-height: 1.7;
+}
+.form-textarea:focus { outline: none; border-color: var(--accent); }
+
+.page--form .form-input { margin-top: 0; }
+
+.author-line { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.author-name { font-weight: 600; }
+.checkbox, .radio { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-light);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 2px 6px 2px 10px;
+  font-size: 12px;
+}
+.chip-sel__x {
+  border: none;
+  background: none;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.chip-sel__x:hover { color: var(--danger); }
+
+/* 追加済み添付の一覧（フォーム内ではクリック不可・削除のみ） */
+.page--form .attach-list { margin-bottom: 10px; }
+.page--form .attach-row { cursor: default; }
+.page--form .attach-row:hover { border-color: var(--border); background: var(--surface); }
+
+/* 添付の追加エリア */
+.attach-adder {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface-raised);
+}
+.attach-adder__head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.attach-adder__head .form-select { flex: 1; }
+.attach-adder__detail > * + * { margin-top: 8px; }
+.attach-adder__detail .form-input { display: block; }
+.row-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.warn-text { font-size: 12px; color: var(--warn); }
+
+.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* ディレクトリページ: ツールバーのアクション（ディレクトリ作成 + 新規記事） */
+.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

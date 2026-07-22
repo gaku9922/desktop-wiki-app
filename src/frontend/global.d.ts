@@ -12,6 +12,12 @@ import type {
   ArticleDetail as SharedArticleDetail,
   ResolvedAttachment as SharedResolvedAttachment,
   AttachDownloadResult as SharedAttachDownloadResult,
+  MatrixOptions as SharedMatrixOptions,
+  MatrixOption as SharedMatrixOption,
+  PickedPath as SharedPickedPath,
+  CreateArticleInput as SharedCreateArticleInput,
+  CreateAttachmentInput as SharedCreateAttachmentInput,
+  CreateArticleResult as SharedCreateArticleResult,
 } from '../shared/types';
 
 declare global {
@@ -28,6 +34,12 @@ declare global {
   type ArticleDetail = SharedArticleDetail;
   type ResolvedAttachment = SharedResolvedAttachment;
   type AttachDownloadResult = SharedAttachDownloadResult;
+  type MatrixOptions = SharedMatrixOptions;
+  type MatrixOption = SharedMatrixOption;
+  type PickedPath = SharedPickedPath;
+  type CreateArticleInput = SharedCreateArticleInput;
+  type CreateAttachmentInput = SharedCreateAttachmentInput;
+  type CreateArticleResult = SharedCreateArticleResult;
 }
 
 export {};
