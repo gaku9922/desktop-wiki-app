@@ -488,3 +488,50 @@ JSONスキーマ知識を機能側へ散らさないため、`src/backend/articl
 
 ## 検証済み（バックエンド）
 登録/解除トグル、存在しない記事は登録不可、`favorites.json` への保存、無効IDのプルーニング（削除済みIDを除去して保存）を確認。
+
+---
+
+# 宇宙スキル標準（マトリクス検索）機能（実装済み）
+
+サイドバー「宇宙スキル標準」→「宇宙スキル標準の検索」から `#/skillmatrix` へ。
+CSV（`uchu_skill_business_map.csv`）を元に、行=業務・列=スキルのマトリクスを表示する。
+サイドバー順: 検索 / お気に入り / 宇宙スキル標準 / Wikiツリー。
+
+## データ
+- `SkillMatrix.getMatrix()` が「大項目→小項目」ツリー（業務 21大/174小・スキル 22大/164小）と
+  関係グラフ `links: {b, s, level}`（1,728件・level 1/2）を返す。IPC `matrix:full`
+- `ArticleSummary` に `business[]` / `skill[]`（spaceSkillのID）を追加 → 記事の逆引きをクライアント側で実施
+
+## マトリクス表示（折りたたみ）
+- 既定は**大項目×大項目**の軽いグリッド。大項目見出しクリックで小項目を展開（行=業務・列=スキル）
+- セルは関連の**level を濃淡**で表示（level2=濃・level1=淡）。列見出し（スキル小項目）は縦書き
+- sticky なコーナー/行・列見出しでスクロール時も固定
+- 行/列の**小項目見出しをクリックで選択**（業務 or スキル）
+
+## 選択 → 関連記事
+- 業務B選択 → ①Bに紐づく記事（`business` に B を含む）②Bに関連するスキル（グラフ）＋各スキルに紐づく記事
+- スキル選択時も対称。記事行クリックで `#/article/:id` へ遷移
+
+## 留意点
+- Numbers 本体（IWA）は解析せず、CSV を正本とする（同等のマトリクスを描画）
+- 全小項目展開は 174×164 と重いため、既定は大項目折りたたみ。展開は段階的
+- sticky 見出しは固定寸法前提（大項目行26px・行見出し幅92/130px）。ラベル長は省略表示
+
+---
+
+# 宇宙スキル標準: 出典表示・詳細説明（追加）
+
+- **出典**: マトリクスページ冒頭に「宇宙スキル標準について:宇宙政策 - 内閣府」
+  （https://www8.cao.go.jp/space/skill/kaisai.html ）へのリンクを表示。クリックで既定ブラウザを開く
+  （IPC `link:openUrl`＝http/https のみ許可の汎用 openExternal）
+- **詳細説明**: 業務/スキルの小項目を選択すると、見出し直下に説明文を表示。
+  説明は `matrix/skill_descriptions.csv` / `matrix/business_descriptions.csv`（任意配置）から
+  **ラベル一致**で読み込む（`SkillMatrix.loadDescriptions`）。該当が無ければ表示しない。
+  - CSV形式は柔軟: 行内で既存ラベルに一致するセルを「名称」、最長の別セルを「説明」とみなす
+    （列順・ヘッダ名に依存しない）
+
+## 説明データの出所
+説明は元Excel（`uchuskill_final.xlsx`）から抽出して `matrix/skill_descriptions.csv` /
+`matrix/business_descriptions.csv`（列: name, description）を生成し、ラベル一致（NFKC正規化）で
+小項目に付与している。カバレッジ: スキル 164/164、業務 169/174（未一致は表記揺れで非表示）。
+（.numbers は IWA/Snappy/protobuf でこの環境では安定抽出できず、XMLベースの .xlsx を採用した。）

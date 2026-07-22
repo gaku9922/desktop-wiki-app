@@ -15,6 +15,10 @@ import type {
   AttachDownloadResult as SharedAttachDownloadResult,
   MatrixOptions as SharedMatrixOptions,
   MatrixOption as SharedMatrixOption,
+  MatrixData as SharedMatrixData,
+  MatrixMajor as SharedMatrixMajor,
+  MatrixSub as SharedMatrixSub,
+  MatrixLink as SharedMatrixLink,
   PickedPath as SharedPickedPath,
   CreateArticleInput as SharedCreateArticleInput,
   CreateAttachmentInput as SharedCreateAttachmentInput,
@@ -41,6 +45,10 @@ declare global {
   type AttachDownloadResult = SharedAttachDownloadResult;
   type MatrixOptions = SharedMatrixOptions;
   type MatrixOption = SharedMatrixOption;
+  type MatrixData = SharedMatrixData;
+  type MatrixMajor = SharedMatrixMajor;
+  type MatrixSub = SharedMatrixSub;
+  type MatrixLink = SharedMatrixLink;
   type PickedPath = SharedPickedPath;
   type CreateArticleInput = SharedCreateArticleInput;
   type CreateAttachmentInput = SharedCreateAttachmentInput;

@@ -183,6 +183,12 @@ export default class ArticleManager {
           updatedAt: article.updatedAt ?? '',
           updatedBy: article.updatedBy ?? '',
           tags: Array.isArray(article.tags) ? article.tags : [],
+          business: Array.isArray(article.spaceSkill?.business)
+            ? article.spaceSkill.business
+            : [],
+          skill: Array.isArray(article.spaceSkill?.skill)
+            ? article.spaceSkill.skill
+            : [],
           relativePath: this.toRel(jsonPath),
           categoryPath: [...categoryPath],
         };

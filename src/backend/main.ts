@@ -23,6 +23,7 @@ import type {
   DownloadPayload,
   OpenLinkPayload,
   OpenLinkResult,
+  OpenUrlPayload,
   PickPathPayload,
   PickedPath,
   ReadPayload,
@@ -195,10 +196,33 @@ const registerIpcHandlers = (
     },
   );
 
+  // 任意URLを既定ブラウザで開く（http/https のみ）
+  ipcMain.handle(
+    'link:openUrl',
+    async (_event, { url }: OpenUrlPayload): Promise<OpenLinkResult> => {
+      try {
+        const proto = new URL(url).protocol;
+        if (proto !== 'http:' && proto !== 'https:') {
+          return { status: 'invalid', url };
+        }
+        await shell.openExternal(url);
+        return { status: 'ok' };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
   // ------------------------------------------------------------------ //
   //  スキル/業務のプルダウン候補
   // ------------------------------------------------------------------ //
   ipcMain.handle('matrix:options', () => matrix.options());
+
+  // 宇宙スキル標準マトリクス（大項目→小項目・関係グラフ）
+  ipcMain.handle('matrix:full', () => matrix.getMatrix());
 
   // ------------------------------------------------------------------ //
   //  パス選択ダイアログ（コピーはしない。アップロード方式のステージング用）
