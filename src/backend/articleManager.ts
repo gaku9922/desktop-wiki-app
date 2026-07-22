@@ -6,9 +6,11 @@ import type {
   ArticleSummary,
   AttachmentRef,
   CreateArticleInput,
+  CreateAttachmentInput,
   FileAttachment,
   ResolvedAttachment,
   SkillLabel,
+  UpdateArticleInput,
   WikiCategoryNode,
   WikiTreeNode,
 } from '../shared/types';
@@ -24,6 +26,7 @@ import {
   serializeArticleJson,
   validateCreateInput,
   validateDirName,
+  validateUpdateInput,
 } from './articleSchema';
 
 // 記事ディレクトリ名（UGB + 数字）
@@ -427,42 +430,44 @@ export default class ArticleManager {
     throw new Error('記事IDの採番に失敗しました。');
   }
 
-  //  添付入力を解決して AttachmentRef[] を作る。uploadは attachments/ へコピー
+  //  添付入力1件を解決して AttachmentRef を作る。uploadは attachments/ へコピー
+  private async buildOneAttachment(
+    att: CreateAttachmentInput,
+    articleDir: string,
+  ): Promise<AttachmentRef> {
+    switch (att.kind) {
+      case 'upload': {
+        const attachDir = path.join(articleDir, 'attachments');
+        fs.mkdirSync(attachDir, { recursive: true });
+        const dest = path.join(attachDir, att.name);
+        if (att.fileType === 'folder') {
+          await fs.promises.cp(att.sourcePath, dest, {
+            recursive: true,
+            force: true,
+            errorOnExist: false,
+          });
+        } else {
+          await fs.promises.copyFile(att.sourcePath, dest);
+        }
+        return inArticleDirAttachment(att.name, att.fileType === 'folder', dest);
+      }
+      case 'fileServer':
+        return fileServerAttachment(att.path, att.fileType === 'folder');
+      case 'article':
+        return articleAttachment(att.id);
+      case 'link':
+        return linkAttachment(att.url, att.name);
+    }
+  }
+
+  //  添付入力を解決して AttachmentRef[] を作る
   private async buildAttachments(
     input: CreateArticleInput,
     articleDir: string,
   ): Promise<AttachmentRef[]> {
     const refs: AttachmentRef[] = [];
-    const attachDir = path.join(articleDir, 'attachments');
     for (const att of input.attachments) {
-      switch (att.kind) {
-        case 'upload': {
-          fs.mkdirSync(attachDir, { recursive: true });
-          const dest = path.join(attachDir, att.name);
-          if (att.fileType === 'folder') {
-            await fs.promises.cp(att.sourcePath, dest, {
-              recursive: true,
-              force: true,
-              errorOnExist: false,
-            });
-          } else {
-            await fs.promises.copyFile(att.sourcePath, dest);
-          }
-          refs.push(
-            inArticleDirAttachment(att.name, att.fileType === 'folder', dest),
-          );
-          break;
-        }
-        case 'fileServer':
-          refs.push(fileServerAttachment(att.path, att.fileType === 'folder'));
-          break;
-        case 'article':
-          refs.push(articleAttachment(att.id));
-          break;
-        case 'link':
-          refs.push(linkAttachment(att.url, att.name));
-          break;
-      }
+      refs.push(await this.buildOneAttachment(att, articleDir));
     }
     return refs;
   }
@@ -529,5 +534,102 @@ export default class ArticleManager {
     }
     fs.mkdirSync(dir, { recursive: true });
     this.invalidate();
+  }
+
+  //  既存記事の更新。id/createdAt/createdBy は保持、updated系は更新。
+  //  配置先が変わった場合は記事ディレクトリを移動する。
+  async updateArticle(
+    input: UpdateArticleInput,
+    userName: string,
+  ): Promise<string> {
+    const err = validateUpdateInput(input, {
+      validSkill: (id) => this.matrix.hasSkill(id),
+      validBusiness: (id) => this.matrix.hasBusiness(id),
+      validArticle: (id) => this.ensureIndex().byId.has(id),
+    });
+    if (err) throw new Error(err);
+
+    const found = this.readArticle(input.id);
+    if (!found) throw new Error('対象の記事が見つかりません。');
+    const original = found.article;
+    const oldDir = this.articleDirOf(found.summary);
+
+    // 配置先変更 → 記事ディレクトリを移動
+    let dir = oldDir;
+    const oldKey = found.summary.categoryPath.join('/');
+    const newKey = input.categoryPath.join('/');
+    if (newKey !== oldKey) {
+      const targetCategoryAbs = this.ensureCategoryDir(input.categoryPath);
+      const newDir = path.join(targetCategoryAbs, input.id);
+      if (fs.existsSync(newDir)) {
+        throw new Error('移動先に同名の記事が既に存在します。');
+      }
+      fs.renameSync(oldDir, newDir);
+      dir = newDir;
+    }
+
+    // 添付の解決（既存維持・新規追加）と inArticleDir で残す名前の収集
+    const attachDir = path.join(dir, 'attachments');
+    const finalRefs: AttachmentRef[] = [];
+    const keptInArticle = new Set<string>();
+    for (const item of input.attachments) {
+      if (item.source === 'existing') {
+        const ref = item.ref;
+        if (
+          (ref.type === 'file' || ref.type === 'folder') &&
+          ref.method === 'inArticleDir'
+        ) {
+          keptInArticle.add(ref.name);
+          finalRefs.push(
+            inArticleDirAttachment(
+              ref.name,
+              ref.type === 'folder',
+              path.join(attachDir, ref.name),
+            ),
+          );
+        } else {
+          finalRefs.push(ref); // inFileServer / article / link はそのまま
+        }
+      } else {
+        const built = await this.buildOneAttachment(item.input, dir);
+        if (built.type !== 'article' && built.method === 'inArticleDir') {
+          keptInArticle.add(built.name);
+        }
+        finalRefs.push(built);
+      }
+    }
+
+    // 孤児掃除: attachments/ 内で最終的に参照されないファイル/フォルダを削除
+    try {
+      for (const name of fs.readdirSync(attachDir)) {
+        if (!keptInArticle.has(name)) {
+          fs.rmSync(path.join(attachDir, name), { recursive: true, force: true });
+        }
+      }
+      if (fs.readdirSync(attachDir).length === 0) fs.rmdirSync(attachDir);
+    } catch {
+      // attachments/ が無ければ何もしない
+    }
+
+    const now = nowJstIso();
+    const who = input.anonymous ? '匿名' : userName || '匿名';
+    const { json, markdown } = buildArticleRecord({
+      id: input.id,
+      title: input.title.trim(),
+      createdAt: original.createdAt,
+      createdBy: original.createdBy,
+      updatedAt: now,
+      updatedBy: who,
+      tags: input.tags,
+      skill: input.skill,
+      business: input.business,
+      attachments: finalRefs,
+      body: input.body,
+    });
+    fs.writeFileSync(path.join(dir, `${input.id}.json`), serializeArticleJson(json), 'utf-8');
+    fs.writeFileSync(path.join(dir, `${input.id}.md`), markdown, 'utf-8');
+
+    this.invalidate();
+    return input.id;
   }
 }

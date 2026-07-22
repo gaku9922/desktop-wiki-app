@@ -12,6 +12,8 @@ import type {
   CreateArticleResult,
   CreateDirectoryPayload,
   CreateDirectoryResult,
+  UpdateArticleInput,
+  UpdateArticleResult,
   DeletePayload,
   DownloadPayload,
   OpenLinkPayload,
@@ -211,6 +213,30 @@ const registerIpcHandlers = (
           userName = '';
         }
         const id = await am.createArticle(input, userName);
+        return { status: 'ok', id };
+      } catch (err) {
+        return {
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------ //
+  //  既存記事の更新。作成者名は userData の user.json を正とする
+  // ------------------------------------------------------------------ //
+  ipcMain.handle(
+    'article:update',
+    async (_event, input: UpdateArticleInput): Promise<UpdateArticleResult> => {
+      try {
+        let userName = '';
+        try {
+          userName = (userFm.readJson(USER_FILE) as UserConfig).name;
+        } catch {
+          userName = '';
+        }
+        const id = await am.updateArticle(input, userName);
         return { status: 'ok', id };
       } catch (err) {
         return {

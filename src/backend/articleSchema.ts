@@ -2,8 +2,10 @@ import type {
   ArticleAttachment,
   AttachmentRef,
   CreateArticleInput,
+  CreateAttachmentInput,
   FileAttachment,
   LinkAttachment,
+  UpdateArticleInput,
 } from '../shared/types';
 
 // ================================================================== //
@@ -126,44 +128,83 @@ export interface CreateValidators {
   validArticle(id: string): boolean;
 }
 
+//  タイトル・本文・配置先・スキル/業務の共通検証（create/update 共用）
+interface CoreFields {
+  title: string;
+  body: string;
+  categoryPath: string[];
+  skill: string[];
+  business: string[];
+}
+function validateCore(c: CoreFields, v: CreateValidators): string | null {
+  if (!c.title || c.title.trim().length === 0) {
+    return 'タイトルを入力してください。';
+  }
+  if (!c.body || c.body.trim().length === 0) {
+    return '本文を入力してください（1文字以上）。';
+  }
+  for (const seg of c.categoryPath) {
+    const err = validateDirName(seg);
+    if (err) return err;
+  }
+  for (const id of c.skill) {
+    if (!v.validSkill(id)) return `不正なスキルIDです: ${id}`;
+  }
+  for (const id of c.business) {
+    if (!v.validBusiness(id)) return `不正な業務IDです: ${id}`;
+  }
+  return null;
+}
+
+//  新規追加する添付1件の検証
+export function validateNewAttachment(
+  att: CreateAttachmentInput,
+  v: CreateValidators,
+): string | null {
+  switch (att.kind) {
+    case 'upload':
+      if (!att.sourcePath) return 'アップロード対象が選択されていません。';
+      if (!att.name) return 'アップロードファイル名が不正です。';
+      return null;
+    case 'fileServer':
+      if (normalizeAbsolutePath(att.path).length === 0) {
+        return 'ファイルサーバのパスを入力してください。';
+      }
+      return null;
+    case 'article':
+      if (!att.id) return '関連記事が選択されていません。';
+      if (!v.validArticle(att.id)) return `存在しない記事IDです: ${att.id}`;
+      return null;
+    case 'link':
+      if (!isHttpUrl(att.url)) return `無効なURLです（http/https のみ）: ${att.url}`;
+      return null;
+  }
+}
+
 export function validateCreateInput(
   input: CreateArticleInput,
   v: CreateValidators,
 ): string | null {
-  if (!input.title || input.title.trim().length === 0) {
-    return 'タイトルを入力してください。';
-  }
-  if (!input.body || input.body.trim().length === 0) {
-    return '本文を入力してください（1文字以上）。';
-  }
-  for (const seg of input.categoryPath) {
-    const err = validateDirName(seg);
-    if (err) return err;
-  }
-  for (const id of input.skill) {
-    if (!v.validSkill(id)) return `不正なスキルIDです: ${id}`;
-  }
-  for (const id of input.business) {
-    if (!v.validBusiness(id)) return `不正な業務IDです: ${id}`;
-  }
+  const core = validateCore(input, v);
+  if (core) return core;
   for (const att of input.attachments) {
-    switch (att.kind) {
-      case 'upload':
-        if (!att.sourcePath) return 'アップロード対象が選択されていません。';
-        if (!att.name) return 'アップロードファイル名が不正です。';
-        break;
-      case 'fileServer':
-        if (normalizeAbsolutePath(att.path).length === 0) {
-          return 'ファイルサーバのパスを入力してください。';
-        }
-        break;
-      case 'article':
-        if (!att.id) return '関連記事が選択されていません。';
-        if (!v.validArticle(att.id)) return `存在しない記事IDです: ${att.id}`;
-        break;
-      case 'link':
-        if (!isHttpUrl(att.url)) return `無効なURLです（http/https のみ）: ${att.url}`;
-        break;
+    const e = validateNewAttachment(att, v);
+    if (e) return e;
+  }
+  return null;
+}
+
+//  更新入力の検証。既存添付は再検証しない（保存を阻害しない）
+export function validateUpdateInput(
+  input: UpdateArticleInput,
+  v: CreateValidators,
+): string | null {
+  const core = validateCore(input, v);
+  if (core) return core;
+  for (const item of input.attachments) {
+    if (item.source === 'new') {
+      const e = validateNewAttachment(item.input, v);
+      if (e) return e;
     }
   }
   return null;

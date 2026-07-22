@@ -470,6 +470,8 @@ button { font-family: inherit; }
 .btn:hover { background: var(--surface-raised); }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--primary:hover { background: var(--accent-dark); }
+.btn--danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn--danger:hover { background: #b93b3b; }
 
 /* ================================================================== */
 /*  New article form                                                  */

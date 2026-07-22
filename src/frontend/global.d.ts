@@ -18,6 +18,9 @@ import type {
   CreateArticleInput as SharedCreateArticleInput,
   CreateAttachmentInput as SharedCreateAttachmentInput,
   CreateArticleResult as SharedCreateArticleResult,
+  EditAttachmentInput as SharedEditAttachmentInput,
+  UpdateArticleInput as SharedUpdateArticleInput,
+  UpdateArticleResult as SharedUpdateArticleResult,
 } from '../shared/types';
 
 declare global {
@@ -40,6 +43,9 @@ declare global {
   type CreateArticleInput = SharedCreateArticleInput;
   type CreateAttachmentInput = SharedCreateAttachmentInput;
   type CreateArticleResult = SharedCreateArticleResult;
+  type EditAttachmentInput = SharedEditAttachmentInput;
+  type UpdateArticleInput = SharedUpdateArticleInput;
+  type UpdateArticleResult = SharedUpdateArticleResult;
 }
 
 export {};
