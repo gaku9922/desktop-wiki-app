@@ -43,6 +43,7 @@ let wikiTree: WikiTreeNode[] = [];
 let articleIndex: ArticleSummary[] = [];
 const summaryById = new Map<string, ArticleSummary>();
 let matrixOptions: MatrixOptions | null = null;
+let matrixData: MatrixData | null = null;
 let favoriteIds = new Set<string>();
 let currentUserName = '';
 
@@ -292,7 +293,8 @@ type Route =
   | { type: 'category'; path: string[] }
   | { type: 'new'; path: string[] }
   | { type: 'edit'; id: string }
-  | { type: 'search'; mode: 'kw' | 'tag'; term: string };
+  | { type: 'search'; mode: 'kw' | 'tag'; term: string }
+  | { type: 'skillmatrix' };
 
 function parseRoute(): Route {
   const h = location.hash;
@@ -306,6 +308,7 @@ function parseRoute(): Route {
   if (me) return { type: 'edit', id: decodeURIComponent(me[1]) };
   const msr = /^#\/search\/(kw|tag)\/(.+)$/.exec(h);
   if (msr) return { type: 'search', mode: msr[1] as 'kw' | 'tag', term: decodeURIComponent(msr[2]) };
+  if (h === '#/skillmatrix') return { type: 'skillmatrix' };
   return { type: 'top' };
 }
 
@@ -343,6 +346,7 @@ function render(): void {
   else if (route.type === 'new') renderNew(route.path);
   else if (route.type === 'edit') renderEdit(route.id);
   else if (route.type === 'search') renderSearch(route.mode, route.term);
+  else if (route.type === 'skillmatrix') renderSkillMatrix();
   else renderTop();
   updateSidebarActive();
 }
@@ -439,6 +443,305 @@ function populateSearchControls(): void {
     searchTag.appendChild(el('option', { text: t, attrs: { value: t } }));
   }
   searchTag.value = current;
+}
+
+// ------------------------------------------------------------------ //
+//  宇宙スキル標準マトリクス
+// ------------------------------------------------------------------ //
+async function renderSkillMatrix(): Promise<void> {
+  viewEl.innerHTML = '';
+  viewEl.appendChild(el('p', { class: 'placeholder', text: '読み込み中…' }));
+  if (!matrixData) {
+    try {
+      matrixData = await window.articleAPI.matrixFull();
+    } catch {
+      matrixData = { businessMajors: [], skillMajors: [], links: [] };
+    }
+  }
+  if (parseRoute().type !== 'skillmatrix') return;
+  const data = matrixData;
+
+  // 逆引き用: biz -> skill -> level、id -> label、skill大項目 -> subIds
+  const linkMap = new Map<string, Map<string, number>>();
+  for (const l of data.links) {
+    let m = linkMap.get(l.b);
+    if (!m) {
+      m = new Map();
+      linkMap.set(l.b, m);
+    }
+    m.set(l.s, l.level);
+  }
+  const subLabel = new Map<string, string>();
+  const skillMajorSubs = new Map<string, string[]>();
+  for (const sm of data.skillMajors) {
+    skillMajorSubs.set(sm.id, sm.subs.map((s) => s.id));
+    for (const s of sm.subs) subLabel.set(s.id, s.label);
+  }
+  const bizMajorSubs = new Map<string, string[]>();
+  for (const bm of data.businessMajors) {
+    bizMajorSubs.set(bm.id, bm.subs.map((s) => s.id));
+    for (const s of bm.subs) subLabel.set(s.id, s.label);
+  }
+
+  const maxLevel = (bizIds: string[], skillIds: string[]): number => {
+    let max = 0;
+    for (const b of bizIds) {
+      const m = linkMap.get(b);
+      if (!m) continue;
+      for (const s of skillIds) {
+        const lv = m.get(s);
+        if (lv && lv > max) {
+          max = lv;
+          if (max >= 2) return 2;
+        }
+      }
+    }
+    return max;
+  };
+
+  const expandedBiz = new Set<string>();
+  const expandedSkill = new Set<string>();
+  let selected: { kind: 'business' | 'skill'; id: string } | null = null;
+
+  viewEl.innerHTML = '';
+  const page = el('div', { class: 'page page--skillmatrix' });
+  page.appendChild(el('h1', { class: 'top__title', text: '宇宙スキル標準' }));
+  page.appendChild(
+    el('p', {
+      class: 'top__desc',
+      text:
+        '行=業務・列=スキルのマトリクスです。大項目をクリックで小項目を展開し、' +
+        '小項目（業務・スキル）を選択すると関連する記事が表示されます。',
+    }),
+  );
+
+  const matrixWrap = el('div', { class: 'matrix-wrap' });
+  const panel = el('div', { class: 'matrix-panel' });
+
+  const rebuildMatrix = (): void => {
+    matrixWrap.innerHTML = '';
+    matrixWrap.appendChild(buildMatrixTable());
+  };
+  const rebuildPanel = (): void => {
+    panel.innerHTML = '';
+    panel.appendChild(buildRelatedPanel());
+  };
+
+  function buildMatrixTable(): HTMLElement {
+    const table = document.createElement('table');
+    table.className = 'matrix-table';
+
+    // 列エントリ（スキル）を平坦化
+    const colEntries: { major: string; sub: string | null }[] = [];
+    for (const sm of data.skillMajors) {
+      if (expandedSkill.has(sm.id)) {
+        for (const s of sm.subs) colEntries.push({ major: sm.id, sub: s.id });
+      } else {
+        colEntries.push({ major: sm.id, sub: null });
+      }
+    }
+
+    // ヘッダー行1: スキル大項目バンド
+    const thead = document.createElement('thead');
+    const hr1 = document.createElement('tr');
+    const corner = document.createElement('th');
+    corner.className = 'matrix-corner';
+    corner.colSpan = 2;
+    corner.rowSpan = 2;
+    hr1.appendChild(corner);
+    for (const sm of data.skillMajors) {
+      const expanded = expandedSkill.has(sm.id);
+      const th = document.createElement('th');
+      th.className = 'matrix-cmajor';
+      th.colSpan = expanded ? sm.subs.length : 1;
+      th.textContent = `${sm.label} ${expanded ? '▾' : '▸'}`;
+      th.title = 'クリックで展開/折りたたみ';
+      th.addEventListener('click', () => {
+        if (expanded) expandedSkill.delete(sm.id);
+        else expandedSkill.add(sm.id);
+        rebuildMatrix();
+      });
+      hr1.appendChild(th);
+    }
+    thead.appendChild(hr1);
+
+    // ヘッダー行2: スキル小項目（展開時のみ・縦書き）
+    const hr2 = document.createElement('tr');
+    for (const sm of data.skillMajors) {
+      if (expandedSkill.has(sm.id)) {
+        for (const s of sm.subs) {
+          const th = document.createElement('th');
+          th.className = 'matrix-csub';
+          if (selected && selected.kind === 'skill' && selected.id === s.id) {
+            th.classList.add('is-selected');
+          }
+          th.appendChild(el('span', { class: 'matrix-csub__label', text: s.label }));
+          th.title = `${s.id} ${s.label}`;
+          th.addEventListener('click', () => selectItem('skill', s.id));
+          hr2.appendChild(th);
+        }
+      } else {
+        const th = document.createElement('th');
+        th.className = 'matrix-csub matrix-csub--collapsed';
+        hr2.appendChild(th);
+      }
+    }
+    thead.appendChild(hr2);
+    table.appendChild(thead);
+
+    // ボディ: 業務行
+    const tbody = document.createElement('tbody');
+    for (const bm of data.businessMajors) {
+      const expanded = expandedBiz.has(bm.id);
+      const rowEntries = expanded
+        ? bm.subs.map((s) => ({ sub: s.id as string | null, label: s.label }))
+        : [{ sub: null as string | null, label: bm.label }];
+      rowEntries.forEach((re, idx) => {
+        const tr = document.createElement('tr');
+        if (idx === 0) {
+          const rmajor = document.createElement('th');
+          rmajor.className = 'matrix-rmajor';
+          rmajor.rowSpan = expanded ? bm.subs.length : 1;
+          rmajor.textContent = `${bm.label} ${expanded ? '▾' : '▸'}`;
+          rmajor.title = 'クリックで展開/折りたたみ';
+          rmajor.addEventListener('click', () => {
+            if (expanded) expandedBiz.delete(bm.id);
+            else expandedBiz.add(bm.id);
+            rebuildMatrix();
+          });
+          tr.appendChild(rmajor);
+        }
+        const rsub = document.createElement('th');
+        if (re.sub) {
+          rsub.className = 'matrix-rsub';
+          if (selected && selected.kind === 'business' && selected.id === re.sub) {
+            rsub.classList.add('is-selected');
+          }
+          rsub.textContent = re.label;
+          const sid = re.sub;
+          rsub.addEventListener('click', () => selectItem('business', sid));
+        } else {
+          rsub.className = 'matrix-rsub matrix-rsub--collapsed';
+        }
+        tr.appendChild(rsub);
+
+        const rowSkills = re.sub ? [re.sub] : bmSubs(bm.id);
+        for (const ce of colEntries) {
+          const td = document.createElement('td');
+          td.className = 'matrix-cell';
+          const colSkills = ce.sub ? [ce.sub] : skillMajorSubs.get(ce.major) ?? [];
+          const lv = maxLevel(rowSkills, colSkills);
+          if (lv >= 2) td.classList.add('matrix-cell--lv2');
+          else if (lv === 1) td.classList.add('matrix-cell--lv1');
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function bmSubs(majorId: string): string[] {
+    return bizMajorSubs.get(majorId) ?? [];
+  }
+
+  function selectItem(kind: 'business' | 'skill', id: string): void {
+    selected = { kind, id };
+    rebuildMatrix();
+    rebuildPanel();
+    panel.scrollIntoView({ block: 'nearest' });
+  }
+
+  function buildRelatedPanel(): HTMLElement {
+    const box = el('div', { class: 'related' });
+    if (!selected) {
+      box.appendChild(
+        el('p', {
+          class: 'placeholder',
+          text: 'マトリクスの小項目（業務・スキル）を選択すると、関連する記事が表示されます。',
+        }),
+      );
+      return box;
+    }
+    const label = subLabel.get(selected.id) ?? selected.id;
+    if (selected.kind === 'business') {
+      box.appendChild(el('h2', { class: 'related__title', text: `業務: ${label}（${selected.id}）` }));
+      box.appendChild(relatedSection('この業務に紐づく記事', articlesByBusiness(selected.id)));
+      // 関連スキルとその記事
+      const skillIds = data.links
+        .filter((l) => l.b === selected!.id)
+        .map((l) => l.s);
+      const uniqSkills = [...new Set(skillIds)];
+      const skillsHead = el('h3', { class: 'related__subhead', text: `関連するスキル（${uniqSkills.length}）とその記事` });
+      box.appendChild(skillsHead);
+      if (uniqSkills.length === 0) {
+        box.appendChild(el('p', { class: 'placeholder placeholder--sm', text: '関連スキルはありません' }));
+      } else {
+        for (const sk of uniqSkills) {
+          box.appendChild(
+            relatedSection(`スキル: ${subLabel.get(sk) ?? sk}（${sk}）`, articlesBySkill(sk), true),
+          );
+        }
+      }
+    } else {
+      box.appendChild(el('h2', { class: 'related__title', text: `スキル: ${label}（${selected.id}）` }));
+      box.appendChild(relatedSection('このスキルに紐づく記事', articlesBySkill(selected.id)));
+      const bizIds = data.links
+        .filter((l) => l.s === selected!.id)
+        .map((l) => l.b);
+      const uniqBiz = [...new Set(bizIds)];
+      box.appendChild(el('h3', { class: 'related__subhead', text: `関連する業務（${uniqBiz.length}）とその記事` }));
+      if (uniqBiz.length === 0) {
+        box.appendChild(el('p', { class: 'placeholder placeholder--sm', text: '関連業務はありません' }));
+      } else {
+        for (const bz of uniqBiz) {
+          box.appendChild(
+            relatedSection(`業務: ${subLabel.get(bz) ?? bz}（${bz}）`, articlesByBusiness(bz), true),
+          );
+        }
+      }
+    }
+    return box;
+  }
+
+  page.append(matrixWrap, panel);
+  viewEl.appendChild(page);
+  rebuildMatrix();
+  rebuildPanel();
+}
+
+function articlesByBusiness(id: string): ArticleSummary[] {
+  return articleIndex
+    .filter((s) => s.business.includes(id))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function articlesBySkill(id: string): ArticleSummary[] {
+  return articleIndex
+    .filter((s) => s.skill.includes(id))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+//  関連記事の1グループ（見出し＋記事リンク一覧）
+function relatedSection(title: string, articles: ArticleSummary[], sub = false): HTMLElement {
+  const wrap = el('div', { class: sub ? 'related__group related__group--sub' : 'related__group' });
+  wrap.appendChild(el('div', { class: 'related__group-title', text: `${title} ・ ${articles.length}件` }));
+  if (articles.length === 0) {
+    wrap.appendChild(el('p', { class: 'placeholder placeholder--sm', text: '記事はありません' }));
+    return wrap;
+  }
+  const list = el('div', { class: 'related__list' });
+  for (const s of articles) {
+    const row = el('div', { class: 'related__row' }, [
+      el('span', { class: 'related__row-title', text: s.title }),
+      el('span', { class: 'related__row-crumb', text: s.categoryPath.join(' / ') || 'ルート' }),
+    ]);
+    row.addEventListener('click', () => navigate(`#/article/${s.id}`));
+    list.appendChild(row);
+  }
+  wrap.appendChild(list);
+  return wrap;
 }
 
 function latestRow(s: ArticleSummary): HTMLLIElement {

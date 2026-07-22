@@ -672,3 +672,76 @@ body.resizing-x .sidebar { transition: none; }
 .space-skill__label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
 /* フォーム内: ネストした .field の下余白をリセット */
 .space-skill .field { margin-bottom: 0; }
+
+/* サイドバー: 宇宙スキル標準セクション */
+.sidebar__skillstd { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.skillstd-box { padding: 4px 12px 12px; }
+.skillstd-link { color: var(--accent); text-decoration: none; font-size: 13px; }
+.skillstd-link:hover { text-decoration: underline; }
+
+/* 宇宙スキル標準マトリクスページ */
+.page--skillmatrix { max-width: 1100px; }
+.matrix-wrap {
+  overflow: auto;
+  max-height: 62vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.matrix-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.matrix-table th, .matrix-table td { border: 1px solid var(--border); }
+
+.matrix-corner { position: sticky; top: 0; left: 0; z-index: 5; background: var(--surface-raised); }
+.matrix-cmajor {
+  position: sticky; top: 0; z-index: 3;
+  background: #eef3ee; font-weight: 600; height: 26px;
+  padding: 4px 6px; text-align: center; white-space: nowrap; cursor: pointer;
+}
+.matrix-cmajor:hover { background: #e2ebe2; }
+.matrix-csub {
+  position: sticky; top: 26px; z-index: 2;
+  background: #f4f8f4; height: 92px; width: 22px; min-width: 22px;
+  padding: 2px 0; vertical-align: bottom; cursor: pointer;
+}
+.matrix-csub:hover { background: #e8f1e8; }
+.matrix-csub--collapsed { cursor: default; }
+.matrix-csub__label {
+  writing-mode: vertical-rl; white-space: nowrap; font-size: 10px;
+  display: inline-block; max-height: 86px; overflow: hidden;
+}
+.matrix-rmajor {
+  position: sticky; left: 0; z-index: 3;
+  background: #f6ede6; font-weight: 600; width: 92px; min-width: 92px;
+  padding: 4px 6px; text-align: left; vertical-align: top; cursor: pointer;
+}
+.matrix-rmajor:hover { background: #efe2d7; }
+.matrix-rsub {
+  position: sticky; left: 92px; z-index: 2;
+  background: #faf5f0; width: 130px; min-width: 130px; max-width: 130px;
+  padding: 3px 6px; text-align: left; font-weight: 400; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.matrix-rsub:hover { background: #f3e9e0; }
+.matrix-rsub--collapsed { cursor: default; }
+.matrix-csub.is-selected, .matrix-rsub.is-selected {
+  background: var(--accent-light); color: var(--accent-dark); font-weight: 600;
+}
+.matrix-cell { width: 22px; min-width: 22px; height: 22px; background: var(--surface); }
+.matrix-cell--lv1 { background: #cfe3f6; }
+.matrix-cell--lv2 { background: #4b8fd6; }
+
+/* 関連記事パネル */
+.matrix-panel { margin-top: 22px; }
+.related__title { font-size: 18px; margin: 0 0 10px; }
+.related__subhead { font-size: 14px; margin: 20px 0 8px; color: var(--text-muted); }
+.related__group { margin-bottom: 12px; }
+.related__group--sub { border-left: 2px solid var(--border); padding-left: 12px; }
+.related__group-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.related__list { display: flex; flex-direction: column; gap: 4px; }
+.related__row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius); cursor: pointer; background: var(--surface);
+}
+.related__row:hover { border-color: var(--accent); background: var(--accent-light); }
+.related__row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.related__row-crumb { font-size: 12px; color: var(--text-faint); white-space: nowrap; flex-shrink: 0; }

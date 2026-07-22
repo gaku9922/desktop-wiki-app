@@ -58,6 +58,8 @@ const articleAPI: ArticleAPI = {
 
   matrixOptions: () => ipcRenderer.invoke('matrix:options'),
 
+  matrixFull: () => ipcRenderer.invoke('matrix:full'),
+
   pickPath: (mode: 'file' | 'folder') =>
     ipcRenderer.invoke('dialog:pickPath', { mode }),
 

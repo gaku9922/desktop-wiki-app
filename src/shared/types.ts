@@ -141,6 +141,8 @@ export interface ArticleSummary {
   updatedAt: string;
   updatedBy: string;
   tags: string[];
+  business: string[];     // spaceSkill.business（宇宙スキル標準の逆引き用）
+  skill: string[];        // spaceSkill.skill
   relativePath: string;   // 例: プロジェクト別/H3/UGB0006/UGB0006.json
   categoryPath: string[]; // 例: ["プロジェクト別","H3"]
 }
@@ -217,6 +219,27 @@ export interface MatrixOption {
 export interface MatrixOptions {
   skills: MatrixOption[];
   business: MatrixOption[];
+}
+
+//  宇宙スキル標準マトリクス（大項目→小項目、関係グラフ）
+export interface MatrixSub {
+  id: string;
+  label: string;
+}
+export interface MatrixMajor {
+  id: string;
+  label: string;
+  subs: MatrixSub[];
+}
+export interface MatrixLink {
+  b: string; // business_sub_id
+  s: string; // skill_sub_id
+  level: number; // 関連の強さ（1 / 2）
+}
+export interface MatrixData {
+  businessMajors: MatrixMajor[];
+  skillMajors: MatrixMajor[];
+  links: MatrixLink[];
 }
 
 //  パス選択ダイアログ（アップロード方式のステージング用。コピーはしない）
@@ -297,6 +320,7 @@ export interface ArticleAPI {
     attachmentIndex: number,
   ): Promise<OpenLinkResult>;
   matrixOptions(): Promise<MatrixOptions>;
+  matrixFull(): Promise<MatrixData>;
   pickPath(mode: 'file' | 'folder'): Promise<PickedPath | null>;
   createArticle(input: CreateArticleInput): Promise<CreateArticleResult>;
   updateArticle(input: UpdateArticleInput): Promise<UpdateArticleResult>;
